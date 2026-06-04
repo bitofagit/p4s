@@ -1,0 +1,726 @@
+Cursor action log — one line per substantive change (newest at bottom). Append only; do not replace the file.
+
+2025-03-23 — world.gd: mouse wheel zoom, middle-button pan, pan gestures; Shift+wheel horizontal pan, Ctrl/Cmd+wheel zoom, horizontal wheel tilt pan.
+2025-03-23 — Added cursor-action-log.txt and .cursor/rules/action-log.mdc so Cursor appends brief notes here after changes.
+2025-03-23 — starting_map.gd: earthworks tool (KEY_5), swale tile atlas + sync/preview, energy 3 on wild/cultivated only.
+2025-03-23 — starting_map.gd: swale atlas colour set to #283593 (dark blue trench).
+2025-03-23 — hud.tscn: Lens_Container (top-right VBox) with Normal / Moisture / Nitrogen buttons, high-contrast styling.
+2025-03-23 — starting_map.gd: 64×48 atlas (3 lens rows), active_lens + update_visuals(), HUD lens buttons; earthworks via grid refresh.
+2025-03-23 — starting_map.gd: advance_turn() swale moisture diffusion (delta grid), global m evaporation, cultivated n decay; update_visuals on wake.
+2025-03-23 — hud.tscn: bottom bar 120px (Bottom Wide), SLEEP + separator + Earthworks_Group; Lens_Controls top-right; starting_map lens + Dig Swale wiring.
+2025-03-23 — starting_map.gd: 80×16 atlas (mound tile), dig_swale/build_mound tools, string lenses + TileData.modulate apply_lens; KEY_6, Build Mound UI.
+2025-03-23 — starting_map.gd: advance_turn water movement comment; end-of-turn refresh via apply_lens only (no redundant update_visuals).
+2025-03-23 — hud.tscn: Earthworks_Category; lens buttons Normal/Moisture/Nitrogen; starting_map.gd HUD paths updated.
+2025-03-23 — starting_map.gd: lenses moisture/nitrogen + set_cell_modulate; mound cost 2 n=5 brown tile; swale spread 0.5 only; advance_turn update_visuals.
+2025-03-23 — hud.tscn: Earthworks_Group (Swale/Mound); lens Standard/Moisture/Nitrogen Lens labels; starting_map HUD node paths.
+2025-03-23 — starting_map.gd: mound atlas #c4511a (earthy orange-brown); earthworks + lenses + swale donation already matched spec.
+2025-03-23 — hud.tscn rebuilt: top bar, lens sidebar, bottom action center, hover tooltip; starting_map paths + growth lens + plant stub + tool buttons.
+2025-03-23 — hud.tscn + hud.gd: single Bottom_Dashboard, MenuButton popups, signals; starting_map maps menu labels to tools/lenses.
+2025-03-23 — starting_map.gd: lens tint via Sprite2D Image overlay (128²); removed TileData modulate + preview modulate.
+2025-03-23 — starting_map.gd: replaced with user-provided overlay-only lens; no set_cell_modulate; optional manage_selected + tile_hovered.
+2025-03-23 — hud.tscn: bottom PanelContainer replaced with centered SLEEP / NEXT TURN (250×80); earthworks bar removed from scene.
+2026-03-30 — starting_map.gd: plant tool incompatible-soil path calls spawn_floating_text("Needs: …", warnings) when soil requirements missing.
+2026-03-30 — starting_map.gd: poor soil is soft warning only (yellow "Poor Soil!"); layer occupancy still blocks; queue not blocked on missing soil reqs.
+2026-03-30 — starting_map.gd advance_turn: soil quality penalty (syn_mult *= 0.5^missing_count per missing soil_req tag).
+2026-03-30 — starting_map.gd: added _get_soil_description(cell) for BBCode soil/biome UI strings.
+2026-03-30 — starting_map.gd _process: mouse tooltip (tooltip_label) appends _get_soil_description after Land line.
+2026-03-30 — starting_map.gd: trigger_sleep() centralises sleep (queue + advance_turn + refresh + clear); Space/Sleep/door use it; execute_queued_actions no longer calls advance_turn.
+2026-03-30 — starting_map.gd: Space/next turn via InputMap ui_accept → trigger_sleep(); removed Sleep from SaveManager.hotkeys (no duplicate Space binding).
+2026-03-30 — hud.gd _ready: find_children Button → focus_mode FOCUS_NONE so Space isn’t consumed by UI focus.
+2026-03-30 — starting_map.gd spawn_floating_text: large font + outline; scale 0.25/zoom; float offset scaled by zoom.
+2026-03-30 — starting_map.gd: starting money 500; mature harvest auto-sells (cost×2×yield_amt) + floating text, no produce inventory add.
+2026-03-30 — hud.gd: _setup_inspector_ui top-right VBox (icon + RichTextLabel), starts hidden; show_tile/show_tool call inspector_panel.show().
+2026-03-30 — starting_map.gd: Q clears tool/seed/structure + hides inspector; empty-tool left-click opens soil inspector + noise texture.
+2026-03-30 — starting_map.gd: action queue conflict uses plant layers (seed_id); same tile allows different vertical layers.
+2026-03-30 — hud.gd: queue_panel + queue_list, _setup_queue_ui() (TODAY’S PLAN scroll list, hidden by default), called from _ready.
+2026-03-30 — hud.gd: update_action_queue_ui(queue) populates queue_list; plant lines use seed_id (or seed).
+2026-03-30 — starting_map.gd: _refresh_queue_ui() → HUD; called after sleep clear, after queue append, after conflict remove_at.
+2026-03-30 — hud.gd: active_tool_panel/label, _setup_active_tool_ui + update_active_tool_display (inspection vs tool border).
+2026-03-30 — starting_map.gd: set_current_tool() drives HUD + hides inspector; Q + menus + hotkeys use it; _ready syncs cultivate.
+2026-03-30 — starting_map.gd advance_turn: daily_profits batch; zoom≥0.5 per-tile +£ text; zoom<0.5 chunk £ + yellow glow rects.
+2026-03-30 — hud.gd: active_tool_panel anchor preset PRESET_CENTER_BOTTOM (Godot 4).
+2026-03-30 — starting_map.gd: hotkey equipped var typed String via str(action_name).
+2026-03-30 — hud.gd: active_tool_panel PRESET_TOP_CENTER, offset (-150, 20).
+2026-03-30 — hud.gd: queue panel wider/taller; queue list labels font 14.
+2026-03-30 — hud.gd: active_tool_panel PRESET_CENTER_TOP (Godot 4 layout constant).
+2026-03-30 — hud.gd: _setup_inspector_ui margin + 256² icon + 280-wide RichText; position (-340, 20).
+2026-03-30 — starting_map.gd: is_sleeping gate; trigger_sleep coroutine plays queue + 0.15s steps, full match actions; removed execute_queued_actions/is_zipping.
+2026-03-30 — starting_map.gd spawn_floating_text: CPUParticles2D one-shot burst + timer cleanup before label add_child.
+2026-03-30 — starting_map.gd: audio_pool + chime.wav preload; Master bus AudioEffectReverb; 12× AudioStreamPlayer pool in _ready.
+2026-03-30 — starting_map.gd: seasonal_scales + play_synesthesia_chime(grid_y) pentatonic pitch pool.
+2026-03-30 — starting_map.gd trigger_sleep: play_synesthesia_chime(ay) after visuals per queued action.
+2026-03-30 — starting_map.gd trigger_sleep: farmer dash tween 0.1s per action; return home 0.4s before is_sleeping false (await tweens).
+2026-03-30 — starting_map.gd: night_memory/echo_timer/echo_loop_length/is_daytime; Echo bus + low-pass after Master reverb in _ready.
+2026-03-30 — starting_map.gd: play_synesthesia_chime returns pitch + Master/Echo bus; trigger_sleep records night_memory; is_daytime/echo_timer at sleep end.
+2026-03-30 — starting_map.gd _process: daytime night_memory echo loop (echo_timer, echo_loop_length, played_this_loop).
+2026-03-30 — starting_map.gd _ready: Echo bus only if missing; LPF 1500Hz; vol -4dB.
+2026-03-30 — starting_map.gd: play_synesthesia_chime Echo per-note volume -8dB (was -15).
+2026-03-30 — starting_map.gd trigger_sleep: night_memory times via current_night_time += 0.25 per step.
+2026-03-30 — starting_map.gd trigger_sleep: build_duck_house / build_corridor match arms; hud.gd queue label for build_corridor.
+2026-03-30 — starting_map.gd: _run_duck_patrol() (corridor walk + 3×3 neighbor tiles); advance_turn calls it (replaces old 3x3 duck house loop).
+2026-03-30 — starting_map.gd: _run_duck_patrol at end of advance_turn; can_queue for build_duck_house/build_corridor vs existing structure.
+2026-03-30 — starting_map.gd: F/H hotkeys for corridor/duck house; hud.gd actions_menu structure items + metadata + _on_actions_menu_id_pressed; _on_hud_action_selected match + set_current_tool display for corridor.
+2026-03-30 — starting_map.gd: StructureOverlayNode + _on_structure_overlay_draw (duck house/corridor vector overlay); queue_redraw from _refresh_all_visuals.
+2026-03-30 — starting_map.gd: removed manual build_corridor + _run_duck_patrol + KEY_F; hud.gd removed Fence/Corridor menu + queue label.
+2026-03-30 — starting_map.gd: _find_nearest_river, _bresenham_line, _apply_corridor_brush (duck_patrol zone).
+2026-03-30 — starting_map.gd: _find_nearest_water (river/stream/swale + is_river).
+2026-03-30 — starting_map.gd trigger_sleep build_duck_house: water var + _find_nearest_water path.
+2026-03-30 — starting_map.gd trigger_sleep build_duck_house: 3x3 pen + Bresenham/corridor brush to river.
+2026-03-30 — starting_map.gd: advance_turn duck_patrol +0.2 N; _on_structure_overlay_draw zones (duck_patrol/pen) + fence/gate structures.
+2026-03-30 — hud.gd: actions menu + hotkeys label aliasing cultivate entry (metadata keeps action id).
+2026-03-30 — hud.gd: lenses_menu Abstract + Ghost Vision (metadata ghost); _on_lens_pressed uses metadata; starting_map active_lens ghost + apply_lens wash.
+2026-03-30 — starting_map.gd: ghost_blackout ColorRect z5; apply_lens toggles ghost + hides lens overlay for ghost (darkness).
+2026-03-30 — starting_map.gd _process: structure_overlay ghost breathing synced to echo_loop_length (before zoom early return).
+2026-03-30 — starting_map.gd: PreviewOverlayNode z20 + _on_preview_overlay_draw stub; queue_redraw in _process (before zoom return).
+2026-03-30 — starting_map.gd: _on_preview_overlay_draw duck house path + pen + house (canvas.draw_*).
+2026-03-30 — starting_map.gd advance_turn: duck patrol ecology diluted by patrol tile count + slug chance.
+2026-03-30 — starting_map.gd: additives_data + trigger_sleep match branch additive (seed/seed_id).
+2026-03-30 — starting_map.gd: additive queue stacks (conflict continue) + e_cost 1 + seed in queue entry.
+2026-03-30 — hud.gd: actions_menu Soil Additives + additive: metadata → set_current_tool; queue UI; set_current_tool display for additive.
+2026-03-30 — starting_map.gd: forecast[5] + weather_types + _generate_random_weather; _ready pre-roll.
+2026-03-30 — hud.gd: right info_side_panel + dynamic Info menu (weather/news/economy); removed scene Info_Menu + old Almanac menu hook.
+2026-03-30 — starting_map.gd: advance_turn consumes forecast (rain/drought/frost grid effects) + _on_hud_info_selected 5-day BBCode panel.
+2026-03-30 — starting_map.gd + hud.gd: Polytunnel tool (queue/stack, £15 on sleep, zone polytunnel); Actions menu + queue label.
+2026-03-30 — starting_map.gd: _on_structure_overlay_draw polytunnel zone (glassy arch + ribs).
+2026-03-30 — starting_map.gd: KEY_P → build_polytunnel; hud.gd menu + queue label for Polytunnel.
+2026-03-30 — scripts/meta_manager.gd (karma, upgrades, save/load); project.godot autoload MetaManager.
+2026-03-30 — starting_map.gd: death_panel + _trigger_reincarnation (karma shop, restart); hud.gd Info → Pass On (End Run).
+2026-03-30 — starting_map.gd: MetaManager hooks (trust_fund, poltergeist_labour, thick_gloves); hypnotic_charm on harvest + produce sell.
+2026-03-30 — starting_map.gd + hud.gd: Honesty Box build (queue £25 night, structure honesty_box, overlay draw); Actions menu.
+2026-03-30 — starting_map.gd: inbox_messages + _generate_daily_narrative (Honesty Box income, lore beats); end of advance_turn.
+2026-03-30 — hud.gd: active tool RichTextLabel + mail indicator; starting_map: KEY_B, Info news inbox, apply_mail_indicator.
+2026-03-30 — starting_map.gd: removed KEY_B Honesty Box hotkey; hud.gd menu label without (B).
+2026-03-30 — hud.gd: Build + Amend MenuButtons on bottom bar; removed structures/additives from Actions popup; _on_custom_menu_pressed.
+2026-03-30 — hud.gd: _on_custom_menu_pressed(id, menu_btn) + lambdas for Build/Amend id_pressed.
+2026-03-30 — hud.gd: _setup_active_tool_ui layout (anchors, grow_horizontal, AUTOWRAP_OFF) to fix tall panel.
+2026-03-30 — hud.gd: Additives menu, Info button + all_info, System/Pass On; removed info_menu + _on_info_menu_pressed; starting_map all_info panel.
+2026-03-30 — hud.gd: info_content SIZE_EXPAND_FILL; starting_map Almanac digest (weather, inbox, karma/status).
+2026-03-30 — starting_map.gd + hud.gd: Pig House (£80) + Demolish queue/night; Actions menu entries.
+2026-03-30 — starting_map.gd: _on_structure_overlay_draw pig_house (mud, roof, trough).
+2026-03-30 — starting_map.gd: advance_turn Pig Ecology (radius till, +N, clear ground/understory).
+2026-03-30 — hud.gd: Build menu Pig House + Demolish Structure; queue labels Build Pig House / Demolish Structure.
+2026-03-30 — starting_map.gd: removed initial riverbank Himalayan Balsam from grid gen (Day 8 narrative spawns).
+2026-03-30 — starting_map.gd: _generate_daily_narrative Day 8 Patient Zero balsam + story beat.
+2026-03-30 — starting_map.gd: advance_turn Himalayan Balsam explosive spread (wet/polytunnel rules).
+2026-03-30 — starting_map.gd: spawn_floating_text CPUParticles2D stronger for warnings (amount, scale, bloom).
+2026-03-30 — starting_map.gd: _on_structure_overlay_draw water/terrain (rivers vs swales/moisture); early continue after block 0.
+2026-03-30 — starting_map.gd: _get_soil_description inspector — Flowing River / Surface Water vs Waterlogged Soil (m≥15).
+2026-03-30 — data/data_plants.gd: static get_all_codex_data() BBCode dictionary for Codex UI.
+2026-03-30 — hud.gd + hud.tscn: Plant Codex button; info window loaded at runtime (codex_window); removed scene InfoWindow duplicate.
+2026-03-30 — starting_map.gd: Day 8 Patient Zero balsam skips river/stream/swale tiles.
+2026-03-30 — starting_map.gd: Himalayan Balsam spread (advance_turn) skips water tiles; moisture-only spread chance.
+2026-03-30 — meta_manager.gd: dev_mode flag for Dev Mode launch (map init).
+2026-03-30 — scripts/main_menu.gd + scenes/main_menu.tscn: main menu (Story/Dev/Load/Graphics/Quit), MetaManager.dev_mode, world transition.
+2026-03-30 — starting_map.gd: Dev Mode money/energy overrides; hud.gd: live dev console (FPS, mem, day, queue, mouse).
+2026-03-30 — project.godot: run/main_scene → res://scenes/main_menu.tscn (Control + main_menu.gd).
+2026-03-30 — starting_map.gd: advance_turn — refresh Info panel (Almanac) when open after turn.
+2026-03-30 — main_menu.gd: Graphics panel — Display Mode & Resolution OptionButtons (above UI Scale).
+2026-03-30 — ui_graphics_panel.gd: shared graphics VBox (display, resolution windowed-fix, UI scale, back); main_menu uses it.
+2026-03-30 — pause_menu.gd: ESC pause overlay, Resume/Graphics/Main Menu, ui_graphics_panel; Main Menu → scenes/main_menu.tscn.
+2026-03-30 — starting_map.gd: instantiate pause_menu on HUD CanvasLayer at end of _ready().
+2026-03-30 — pause_menu.gd: layout-safe (min button size, anchors in _enter_tree(), title 48px).
+2026-03-30 — ui_audio_panel.gd: Master/Music/SFX sliders (linear ↔ dB via AudioServer), back_pressed.
+2026-03-30 — main_menu.gd: Continue/New Game/Dev/Load/Graphics/Sound/Quit; ui_audio_panel + Control-typed panels.
+2026-03-30 — pause_menu.gd: Sound Settings + ui_audio_panel; hide on unpause.
+2026-03-30 — dev_spreadsheet.gd: fullscreen Tree spreadsheet for data_plants ENTRIES (8 columns).
+2026-03-30 — hud.gd: dev console VBox + Open Data Spreadsheet; sheet_panel on CanvasLayer.
+2026-03-30 — save_manager + main_menu + starting_map: pending_load_save_name; Continue/Load → world then load_game.
+2026-03-30 — Story Mode: HUD hides Build/Additives/Codex/System; Gen1 £20+lettuce+intro; Day15 narrative; plants.csv lettuce; seed_picker filter.
+2026-03-30 — seed_picker.gd: allowed_seed_ids untyped Array + populate filter via data/data_plants.gd.
+2026-03-30 — seed_picker.gd: load plants — empty ENTRIES then _load_csv() (no has_method on preload).
+2026-03-30 — starting_map + ui_narrative_popup: Story £20 vitals sync; narrative mouse STOP; hide inspector+tooltip for narrative.
+2026-03-30 — ui_karma_shop.gd: THE VOID shop (Gen2 unlocks), Karma spend + save_meta, reincarnate_pressed.
+2026-03-30 — starting_map + ui_karma_shop: death → shop (refresh_from_meta); Inhabit Next Host reload_current_scene.
+2026-03-30 — starting_map.gd: Story Mode £20 + call_deferred _sync_hud_money (Vitals_Label) before intro.
+2026-03-30 — ui_narrative_popup.gd: full-screen narrative panel (placeholder art, BBCode, options, option_selected).
+2026-03-30 — starting_map.gd: after queue/undo tool actions, extra update_visuals(); _refresh_all_visuals queues preview_overlay + HoverLayer redraw (stale highlight fix).
+2026-03-30 — hud.gd: left status sidebar (energy_bar, karma_label, day_label) injected in _ready before Bottom_Dashboard build; StyleBoxFlat set_border_width_all.
+2026-03-30 — starting_map.gd: _sync_hud_status() (day/karma/energy bar + red/green fill); _ready/advance_turn/spend/refund/undo/eat/_process + poltergeist meta.
+2026-03-30 — starting_map add_to_group("map"); Sleep wired in hud.gd via group → trigger_sleep (queue + advance_turn); removed duplicate Sleep connect from map _ready.
+2026-03-30 — hud.gd: @onready vitals_label; starting_map _sync_hud_status forces Vitals_Label text; update_visuals skips bottom RIVER_ROW_COUNT rows (3).
+2026-03-30 — hud.gd: ghost energy_preview ProgressBar under energy_bar (Control stack, clear main bg); starting_map _update_energy_preview_hover + _get_planning_e_m_costs.
+2026-03-30 — starting_map: maintenance_bubble weighted flood-fill from farmhouse_pos (home_pos); has_path on road/bridge/duck_patrol; _calculate_maintenance_bubble from _sync_hud_status.
+2026-03-30 — hud.gd: Lens_Controls_Panel + Ghost Vision button → lens_selected("ghost"); starting_map MaintenanceBubbleOverlayNode + update_visuals ghost bubble draw.
+2026-03-30 — starting_map.gd: advance_turn() = ghost orb tween (paused tree, TWEEN_PAUSE_PROCESS) then _process_turn_logic(); old advance_turn renamed _process_turn_logic.
+2026-03-30 — starting_map.gd: paintbrush drag (is_dragging, last_drag_cell, _attempt_grid_action) for left-tool/queue; right-click inspect unchanged.
+2026-03-30 — starting_map.gd: grid has_path (default false), path visuals + no plants on path; hoe clears path on cultivated (1e); plant blocked on paths; _get_planning_e_m_costs(cell_pos).
+2026-03-30 — starting_map.gd + hud.gd: build_path tool (queue £1, 0e); _cell_can_build_path; night queue applies has_path; Actions + Build menu “Build Path (£1)”.
+2026-03-30 — radio_manager.gd: procedural engine (BPM, pentatonic, pooled SFX, play_action_note); @export base_sample; legacy load_station/next/stop stubs for pause UI.
+2026-03-30 — ui_audio_panel.gd: musical settings grid (BPM 80–140, key OptionButton); separator; bus sliders incl. Beat when present.
+2026-03-30 — starting_map.gd: ghost zip uses 16th-note step_duration + play_action_note("ui"); queue success plays build (cultivate/build_path) or plant.
+2026-03-30 — scripts/camera_director.gd: Camera2D director (event queue, pan/zoom/shake, RadioManager cues, events_finished).
+2026-03-30 — world.gd: merged director into main camera; starting_map overnight_events + main_camera.play_event_queue (weed_spread, plant_died).
+2026-03-30 — starting_map.gd: advance_turn() worker/lantern timelapse (BPM 16th steps, plant notes); _process_turn_logic unchanged as overnight sim.
+2026-03-30 — starting_map.gd: tile_highlight ColorRect (tile size); drag defers _refresh_all_visuals + maintenance bubble to mouse up; _attempt_grid_action lighter.
+2026-03-30 — radio_manager.gd: 4/4 metronome (Timer, beat_player Beat bus, @export beat_sample); ui_audio_panel BPM slider calls _update_metronome.
+2026-03-30 — starting_map.gd: _sync_hud_status no longer runs maintenance flood-fill; removed from _process; bubble on advance_turn + mouse up.
+2026-03-30 — starting_map.gd: _attempt_grid_action instant set_cell + modulate after queue (build_path road tint; plant base cultivated).
+2026-03-30 — radio_manager.gd: 2-octave pentatonic, random-walk last_interval_index, SFX pool -12 dB + per-hit velocity -16..-10 dB.
+2026-03-30 — starting_map.gd: HUD energy StyleBoxFlat red/green created once in _ready; _sync_hud_status uses cache only.
+2026-03-30 — starting_map.gd: _attempt_grid_action only bumps energy_bar.value (no _sync_hud_status) on queue/undo.
+2026-03-30 — starting_map.gd: removed get_cell_tile_data/modulate from update_visuals + drag preview; farm paths use atlas (11,0) road.
+2026-03-30 — starting_map.gd: show_tile only when not dragging; press before is_dragging=true; queue UI refresh on mouse up only.
+2026-03-30 — starting_map.gd: HoverLayer incremental hover (last_hover_pos, erase_cell + set_cell; no clear per frame); invalid mouse clears highlight.
+2026-03-30 — starting_map.gd: _ready OS.low_processor_usage_mode + Engine.max_fps 30; advance_turn worker tween 60 then restore 30.
+2026-03-30 — starting_map.gd: _wake_up_player (max_fps 30 + unpause); main_camera.events_finished connected in _ready.
+2026-03-30 — starting_map.gd: _attempt_grid_action uses grid_data[grid_pos.x][grid_pos.y] via `cell`; build_path uses _cell_can_build_path(cell).
+2026-03-30 — starting_map.gd: _calculate_maintenance_bubble neighbor loop uses grid_data[neighbor.x][neighbor.y] for path cost (removed _maintenance_move_cost_at).
+2026-03-30 — starting_map.gd: _calculate_maintenance_bubble fast BFS (head pointer, no sort/pop_front; unspent_energy cap 60).
+2026-03-30 — starting_map.gd: preview_overlay.queue_redraw only when grid_pos != last_hover_pos (not every _process frame).
+2026-03-30 — radio_manager.gd: random-walk play_action_note (no 0 step); play_zip_note arpeggiator; zip_index. starting_map advance_turn tween calls play_zip_note.
+2026-03-30 — radio_manager.gd: procedural AudioStreamWAV kick+hat (_generate_drum_samples), hat_player Beat bus; beat_sample from synth.
+2026-03-30 — radio_manager.gd: _on_beat hip-hop (hats 4/4, kick 1&3); wake_up_beat LPF tween; play_action_note calls wake_up_beat.
+2026-03-30 — radio_manager.gd: BPM 85, 8th-note metronome, syncopated kick/hats (current_eighth); softer kick 70Hz, shorter hat; dusty kick pitch.
+2026-03-30 — radio_manager.gd: wake_up_beat LPF 2000→250Hz / 4s; _ready adds AudioEffectReverb on SFX bus if missing.
+2026-03-30 — radio_manager.gd: play_zip_note +2 octaves, -24 dB (fairy-dust zip ambience).
+2026-03-30 — radio_manager.gd: beat_hit + eighth_hit signals; _on_beat emits eighth every 8th, beat on quarters.
+2026-03-30 — starting_map.gd: night_memory echoes → _queued_echoes; _on_rhythm_tick on RadioManager eighth_hit; clear queue on sleep.
+2026-03-30 — starting_map.gd: advance_turn awaits eighth_hit until current_eighth % 4 == 0; step_duration 16ths via 60/bpm/4.
+2026-03-30 — radio_manager.gd: softer kick (50Hz, amp cap 18000); hat whisper 3500.
+2026-03-30 — radio_manager.gd: wake_up_beat LPF 1200→150Hz; hats -18/-28 dB; kick -6 dB on hits.
+2026-03-30 — starting_map.gd: advance_turn worker loop comment for play_zip_note (sequential arpeggiator zip phase).
+2026-03-30 — starting_map.gd: play_synesthesia_chime(act_type, is_echo, forced_pitch); chime_index arpeggio + octave from action; echoes replay note pitch; weed pop uses "pop".
+2026-03-30 — starting_map.gd: trigger_sleep Farmer Dash chime comment + night_memory y_pos again.
+2026-03-30 — starting_map.gd: comments on echo forced_pitch + balsam pop play_synesthesia_chime("pop").
+2026-03-30 — starting_map.gd: _get_planned_cell_state + update_visuals uses planned land/has_path from action_queue.
+2026-03-30 — starting_map.gd: _attempt_grid_action validates with planned_state (land/has_path); build_path uses merged cell for _cell_can_build_path.
+2026-03-30 — starting_map.gd: queue undo/stacking — plant on cultivate/hoe keeps base; strip prior plants; same-layer plant undo returns early.
+2026-03-30 — starting_map.gd: removed echo_timer/_queued_echoes daytime playback; added _daytime_melody/_melody_index/_melody_direction; ghost pulse uses wall-clock; _on_rhythm_tick stub.
+2026-03-30 — starting_map.gd: _wake_up_player composes _daytime_melody from night_memory pitches (sorted), resets index/direction.
+2026-03-30 — starting_map.gd: _on_rhythm_tick half-note arpeggio (eighth_index % 4), ping-pong _melody_index via play_synesthesia_chime echo.
+2026-03-30 — starting_map.gd: daytime melody composed at end of trigger_sleep (not _wake_up_player); Engine.max_fps 30 + flags after compose.
+2026-03-30 — starting_map.gd: trigger_sleep awaits main_camera.events_finished after advance_turn when overnight_events + is_playing_events; removed _wake_up_player + _ready connect.
+2026-03-30 — radio_manager.gd: synth_snare + snare_player (Beat bus); _generate_drum_samples lo-fi snare/rimshot (noise+tone+envelope).
+2026-03-30 — radio_manager.gd: _on_beat MPC swing (60ms off-beats), ghost kick on 3, snare on 2/6; eighth_hit before await; no beat_hit emit.
+2026-03-30 — radio_manager.gd: synth_bass + bass_player + _bass_queue; _generate_drum_samples warm sub-bass (sine+triangle, ADSR) on Beat bus.
+2026-03-30 — radio_manager.gd: play_action_note pushes octave-wrapped bass_pitch into _bass_queue (max 3) for call-and-response bass.
+2026-03-30 — radio_manager.gd: _on_beat root bass on 0; reactive bass from _bass_queue on 3/5/7 (after swing await).
+2026-03-30 — radio_manager.gd: _generate_drum_samples sub-bass loop renames freq → bass_freq (scope vs kick).
+2026-03-30 — starting_map.gd: trigger_sleep uncaps FPS 60; dash_dur/wait_dur from action_queue size; night_time/timer use same.
+2026-03-30 — starting_map.gd: trigger_sleep loop create_timer(wait_dur, process_always, …) for wait; night_time += (dash_dur+wait_dur).
+2026-03-30 — starting_map.gd: removed Engine.max_fps=30 caps (_ready, trigger_sleep wake, advance_turn); keep OS.low_processor_usage_mode.
+2026-03-30 — starting_map.gd: _last_dragged_cell gates drag motion _attempt_grid_action; reset on release; press sets cell after first attempt.
+2026-03-30 — starting_map.gd: daytime melody → MELODY_PATTERN 16-step sequencer + _sequence_step; replaces ping-pong _melody_index/_melody_direction.
+2026-03-30 — starting_map.gd: trigger_sleep compose block comment for _sequence_step reset (new day).
+2026-03-30 — starting_map.gd: _on_rhythm_tick quarter notes (eighth_index % 2); MELODY_PATTERN + safe_index % chord size.
+2026-03-30 — radio_manager.gd: Interactive Audio (music_player + @export interactive_music); native_beat_hit from playback.get_current_beat; removed procedural drums/timer/swing/bass queue; starting_map/ui_audio_panel wired to native_beat_hit/current_beat.
+2026-03-30 — starting_map.gd: set_music_state Planning on queue append; Dash before advance_turn pause; Idle after wake; _ready already native_beat_hit.
+2026-03-30 — radio_manager.gd: set_music_state debug prints (VIBE SHIFT + warning if no Interactive stream).
+2026-03-30 — radio_manager.gd: interactive_music preload res://farm_music.tres (autoload; no @export).
+2026-03-30 — radio_manager.gd: interactive_music preload → res://audio/farm_music.tres.
+2026-03-30 — radio_manager.gd: current_bpm 75; _ready failsafe sets clip bpm 75 / beat_count 16 on interactive_music.
+2026-03-30 — starting_map.gd: base_chime preload res://audio/chime.wav (was res://chime.wav).
+2026-04-06 — starting_map.gd: base_chime preload res://sfx/glock-c1.wav (echoes match RadioManager glock).
+2026-04-06 — radio_manager.gd: _ready dynamic beats + Idle clip streams: WAV LOOP_FORWARD / OGG loop for continuous music.
+2026-04-06 — radio_manager.gd: BEATS_FOLDER res://audio/beats; scan any wav/ogg (clean .import); dedupe with not in collected.
+2026-04-06 — audio/beats/: added drum_1…drum_16.wav (copied from assets/audio/beats for res://audio/beats scanner).
+2026-04-06 — radio_manager.gd: removed WAV/OGG loop_mode from _ready dynamic scan + idle clips (Interactive Audio crash).
+2026-04-06 — radio_manager.gd: reverted — restored WAV/OGG loop flags in _ready (undo).
+2026-04-06 — radio_manager.gd: SAFE dynamic playlist (no per-WAV loop); set_list_stream; clip auto_advance self-loop via Interactive.
+2026-03-30 — radio_manager.gd: current_music_state guard in set_music_state (skip duplicate clip_name).
+2026-03-30 — starting_map.gd: _on_rhythm_tick 1 note per native beat (removed beat_index % 2 gate).
+2026-04-06 — assets/audio/beats: drum loops renamed drum_1…drum_16.wav; removed stale .import for old names.
+2026-04-06 — radio_manager.gd: _apply_bpm_failsafe() recursive AudioStreamPlaylist + leaf bpm/beat_count 75/16.
+2026-04-06 — radio_manager.gd: dynamic Idle AudioStreamPlaylist from res://assets/audio/beats drum_*.wav; set_clip_stream Idle; BPM on other clips; removed _apply_bpm_failsafe.
+2026-04-06 — radio_manager.gd: base_sample preload res://sfx/glock-c1.wav (+ sfx/glock-c1.wav copy from chimes).
+2026-04-06 — radio_manager.gd: play_action_note unified glock pentatonic walk; octave -1 for cultivate/dig/build/earthworks; louder SFX pool.
+2026-03-30 — starting_map.gd: default cell biodiversity/aeration; trigger_sleep build_mound boosts aeration 85 and biodiversity +15 (clamp 0–100).
+2026-03-30 — starting_map.gd: _process_plant_biology (growth + exchange) in _process_turn_logic plant loop; _get_plant_data helper.
+2026-03-30 — data/data_almanac.gd: ENTRIES — Living Soil & Biodiversity; Aeration & Root Depth (UK spelling).
+2026-03-30 — hud.tscn + hud.gd: Right_Info_Panel (hover + forecast/events), Modal_Dimmer + Almanac_Window modal; starting_map open/close_almanac + live panel refresh; world.gd camera guard when almanac open.
+2026-03-30 — hud.tscn: Right_Info_Panel anchors + MarginContainer 15px; Almanac_Window 800×600 centered on Modal_Dimmer; hud.gd minimap/lens top-right clears right strip; script paths updated.
+2026-03-30 — hud.tscn: Right_Info_Panel + Almanac_Window as Window (wrap_controls); Almanac sibling of Modal_Dimmer; starting_map close_requested + explicit almanac show/hide.
+2026-03-30 — Ghost Vision → Energy Vision (lens id energy); Energy_Button in hud.gd; starting_map energy_blackout + overlay checks; Lens_UI_Note in hud.tscn.
+2026-03-30 — starting_map.gd: Energy Vision Dijkstra zones (heap, land/has_path costs), EnergyZoneOverlayNode metaballs + line/cost label, cache invalidation in trigger_sleep; z_index 7 under maintenance bubble.
+2026-03-30 — starting_map.gd: Energy Vision _energy_came_from + banded zone draw, has_path yellow tiles, polyline route to cursor, path-bonus text.
+2026-03-30 — starting_map.gd: Energy lens clears overlay texture + queue_redraw (update_visuals/apply_lens); _process queue_redraw in energy; ZONE_COLORS alpha 0.35.
+2026-03-30 — starting_map.gd: Energy Vision — update_visuals hide/null lens sprite + return; EnergyZoneOverlayNode name + queue_redraw in _process; apply_lens toggles vector overlays when HUD-only apply_lens.
+2026-03-30 — starting_map.gd: Energy Vision metaball radius 300px; MaintenanceBubbleOverlayNode _draw disabled (no purple rects).
+2026-03-30 — starting_map.gd: Energy Vision Dijkstra cap 150, tile rects (no alpha stack), zone thresholds, thick polyline, tooltip box; has_path for paths.
+2026-03-30 — starting_map.gd: Energy Vision neon heatmap (0.15α circles), path shadow+cyan, outlined zone labels, multi-line tooltip.
+2026-03-30 — starting_map.gd: Energy route stats moved from canvas to _process tooltip (RichTextLabel); path line draw kept.
+2026-03-30 — starting_map.gd: Energy Vision girih mosaic (_draw_girih_pattern) over heatmap; land/has_path/plant layers.
+2026-04-07 — starting_map.gd: throttle Energy Vision queue_redraw on tile change (_last_energy_mouse_cell); reset tracker when _calculate_energy_zones recomputes.
+2026-04-07 — starting_map.gd: Energy Vision split _draw_energy_background (frustum cull) vs _draw_energy_cursor; camera/farmer vs mouse redraw; EnergyCursorOverlayNode z=9.
+2026-04-07 — starting_map.gd: Energy Vision girih LOD by camera zoom (high/medium/low); frustum culling unchanged (to_global).
+2026-04-07 — starting_map.gd: Energy zones — river impassable (999), paths/bridge bonus (0.3); girih path+bridge styling; build_bridge tool (river→bridge, advance_turn).
+2026-04-07 — starting_map.gd + hud.gd: update_visuals paints footbridges in river rows; Actions menu Footbridge → build_bridge; _on_action_pressed emits build_bridge.
+2026-04-07 — starting_map.gd + hud.gd: Footbridge blueprint (queue + blueprints, anchor); night match "build" applies bridge tiles; Footbridge HUD → set_current_tool build+bridge; clear blueprints after sleep loop.
+2026-04-07 — starting_map.gd: blueprints array; _get_bridge_footprint (land=river snap); preview overlay draws blueprint ghosts + live 4×1 bridge when build+bridge.
+2026-04-07 — starting_map.gd: Energy Vision Zone 0 cyan/blue; river tiles cheap rect+lines (high/medium LOD) via land == "river".
+2026-04-07 — starting_map.gd: Energy/stream terminology — impassable stream (999), river 3.0; bridge + vision use type/land stream.
+2026-04-07 — hud.gd + starting_map.gd: Build menu (_setup_build_menu, sync_build_menu_from_tool); Actions vs Build split; unified blueprint queue (build+structure) for duck/poly/honesty/pig + bridge; trigger_sleep + overlay previews; KEY_H/KEY_P → build+duck_house/polytunnel; removed legacy build_* tools.
+2026-04-07 — hud.gd: removed PopupMenu.ITEM_SEPARATOR check in _on_build_menu_pressed (Godot 4); rely on null metadata for separator rows.
+2026-04-07 — hud.gd: process_frame one-shot positions Right_Info_Panel bottom-right; starting_map.gd: smart demolish (BFS bridge/pen/path + plants/structures), instant _try_smart_demolish + advance_turn.
+2026-04-09 — farm_data_manager.gd + project.godot autoload FarmDataManager; starting_map.gd uses FarmDataManager for grid/turn/queue/blueprints/energy/money/season/produce; hud.gd dev overlay + save_manager.gd save/load read/write FarmDataManager.
+2026-04-09 — project.godot: restored [autoload] (SaveManager, RadioManager, MetaManager, FarmDataManager); section had been missing, causing “Identifier SaveManager not declared”.
+2026-04-09 — main_menu.gd: use @onready get_node(/root/SaveManager|MetaManager) as _save_manager/_meta_manager so singletons resolve without global identifier errors.
+2026-04-09 — starting_map.gd: floating text pool (30), throttle energy/structure overlay redraws while is_sleeping, final overlay redraw + OS.low_processor_usage_mode toggle in trigger_sleep.
+2026-04-09 — starting_map.gd: _update_single_tile_visual(pos) mirrors update_visuals for one cell; trigger_sleep queue loop uses it instead of _refresh_all_visuals (duck house + bridge multi-cell updates; full refresh kept after advance_turn).
+2026-04-09 — starting_map.gd: _process_turn_logic — removed redundant update_visuals/apply_lens/_refresh_minimap; river capillary uses vertical-distance math + stream branch unchanged.
+2026-04-09 — starting_map.gd: AStarGrid2D pathfinding for action queue — _planning_hover_state (tooltip + energy preview with move cost), journey lines in preview overlay, bridge/structure queue paths + energy, sequenced farmer dash in trigger_sleep, A* sync on queue changes/clear.
+2026-04-09 — starting_map.gd: _ready — Master bus AudioEffectReverb only added if none exists (avoids reverb stacking on scene reload).
+2026-04-09 — starting_map.gd: _draw_planned_journey_lines — thicker gold path + black outline, dashed preview; trigger_sleep RETURN HOME uses farm_astar path with 0.4s total or straight fallback.
+2026-04-09 — starting_map.gd: journey hover preview uses debounced (200ms) _get_route_to_new_action + _preview_path_cache; _process queue_redraw when debounce elapsed and target stale.
+2026-04-09 — starting_map.gd: A* weights match _energy_step_cost_for_cell (bridge/path 0.3, river 3); _get_route_to_new_action unsolidifies target for path, move_cost = zone float from raw path sum.
+2026-04-09 — starting_map.gd: _draw_energy_cursor — removed cyan Dijkstra polyline (overlapped yellow A* journey preview); ZONE labels unchanged.
+2026-04-09 — starting_map.gd: _attempt_grid_action — _sync_astar_with_grid replaced with _update_astar_cell for clicked tile (avoids full-grid sync on each queue change).
+2026-04-09 — starting_map.gd: _unhandled_input — Bresenham gap-fill while dragging; Shift+drag rectangle (snake fill on release); _shift_drag_start.
+2026-04-09 — starting_map.gd: _process — tile_highlight stretches to Shift-drag rectangle preview (min/max vs grid_pos).
+2026-04-09 — starting_map.gd: DragStatsLabel on tile_highlight; Shift-rect shows affordable cell count (snake sim + planning costs).
+2026-04-09 — starting_map.gd: DragStatsLabel font 120/outline 24; scale + position vs camera zoom in _process.
+2026-04-09 — starting_map.gd: _ready — fixed DragStatsLabel block indentation (stray extra tab on theme lines).
+2026-04-09 — starting_map.gd: linter — removed unused mouse_cell/last_end/has_last; did_change vs signal shadow; _process(_delta).
+2026-04-09 — starting_map.gd: removed DragStatsLabel; tile_highlight 1×1 only, hidden while sleeping or Shift-drag.
+2026-04-09 — starting_map.gd: Shift-rect queue left-to-right rows; preview overlay green/grey affordability grid; redraw on shift drag motion.
+2026-04-09 — starting_map.gd: _get_smart_drag_sequence (islands + snake + sort by start); Shift release uses smart sequence.
+2026-04-09 — starting_map.gd: Shift overlay grid uses map_ref._get_smart_drag_sequence + _get_planning_e_m_costs (matches execution order).
+2026-04-09 — starting_map.gd: _get_smart_drag_sequence — typed `for dir: Vector2i` + `n: Vector2i` (fixes parser infer error).
+2026-04-09 — starting_map.gd: _current_batch_id incremented on LMB press; batch_id on queued actions (generic + bridge + structure).
+2026-04-09 — starting_map.gd: undo_last_action pops full batch (refund e/m, _update_astar_cell per tile); Ctrl/Cmd+Z in hotkey listener.
+2026-04-09 — main_menu.gd: New Game (_launch_game) clears SaveManager.pending_load_save_name + FarmDataManager.reset_data() before world scene; Continue/Load unchanged.
+2026-04-09 — starting_map.gd: advance_turn maintenance worker → worker_root (core+glow+particles); tweens target worker_root.
+2026-04-09 — starting_map.gd: biome gen — boundary fences at x=6 and x=MAP_SIZE-7 (skip stream/stream_cells).
+2026-04-09 — starting_map.gd: _process_turn_logic harvest profit only if x in player strip (6 < x < MAP_SIZE-7).
+2026-04-09 — starting_map.gd: block tool queue + hover preview outside player strip; A* solid for fence/honesty_box/duck_house/pig_house, bridge passable.
+2026-04-09 — starting_map.gd: _process tile tooltip appends red “Not your land!” on neighbor strip (x≤6 or x≥MAP_SIZE-7).
+2026-04-09 — starting_map.gd: assets/audio/sfx/environment/pop.wav via _play_balsam_pop_sfx() on Day 8 patient-zero spawn + balsam spread POP! (replaces synesthesia pop chime).
+2026-04-09 — starting_map.gd: balsam pop — preload pop.wav, _play_balsam_pop() ephemeral AudioStreamPlayer (SFX bus), spread + Day 8 infection feedback.
+2026-04-09 — starting_map.gd: balsam_pop_stream loaded in _ready via ResourceLoader.exists (no preload) so missing pop.wav does not break parse.
+2026-04-09 — starting_map.gd: _play_balsam_pop() loads pop.wav per call, PROCESS_MODE_ALWAYS, louder SFX; removed balsam_pop_stream + _ready load.
+2026-04-09 — starting_map.gd: dev_mode KEY_8 — spawn Himalayan Balsam under mouse, pop + DEV POP! text.
+2026-04-09 — starting_map.gd: _play_balsam_pop() tries environment/pop.wav then chimehit.wav fallback; warning if neither loads.
+2026-04-09 — assets/audio/sfx/environment/pop.wav copied from permaculture4squares project (balsam pop asset).
+2026-04-09 — farm_data_manager.gd: workers[] + reset_data player; starting_map Day 5 recruit dialogue + handlers; dev_mode Dev Hand worker.
+2026-04-09 — hud.gd: Farm Hands Window + refresh_workers_ui (role OptionButtons, data_reset sync); starting_map refreshes HUD after hire + after HUD init.
+2026-04-09 — starting_map.gd: advance_turn maintenance zip — single tinted icon worker + per-tile ecology floating task words (no lantern/particles).
+2026-04-09 — farm_data_manager.gd: per-worker energy/max_energy + active_worker_id, spend/refund/wake helpers; save/load workers + active id; starting_map uses get_energy/spend/refund.
+2026-04-09 — starting_map.gd: overnight rest = wake_up_workers only; dev_helper 30/30 stamina; recruit digger 25/25, tender 15/15.
+2026-04-09 — starting_map.gd: vitals line Money+Turn only; hud.gd Farm Hands — select button, stamina bars, energy_changed refresh.
+2026-04-09 — starting_map.gd: _update_energy_preview_hover — fix stray indent on ep.max_value (parser error).
+2026-04-09 — starting_map.gd: farmer base texture white + modulate to active worker color; journey lines use w_color.
+2026-04-09 — starting_map.gd: _calculate_maintenance_bubble uses maintenance-role worker energy only; no maintenance → empty bubble (skip zip).
+2026-04-09 — starting_map.gd: queue/blueprint stamp worker_id+color; sleep dash tints farmer per action; modulate only when not sleeping.
+2026-04-09 — starting_map.gd: journey lines per queued item color + active preview; emplaced blueprints use bp_color.
+2026-04-09 — hud.gd: Today's Plan queue labels use action color (font_color theme).
+2026-04-09 — starting_map.gd: _queue_path_start_cell uses last queued pos for active worker_id, else farmhouse.
+2026-04-09 — starting_map.gd: _draw_planned_journey_lines Mini Metro parallel lanes (per worker_id offset + dynamic width).
+2026-04-09 — starting_map.gd: workers_finished signal, _active_zipping_workers, _get_worker_data(w_id).
+2026-04-09 — starting_map.gd: _execute_worker_queue per worker (dash + actions + return home on temp sprite); trigger_sleep partitions queue, awaits workers_finished, snaps farmer home.
+2026-04-09 — starting_map.gd: trigger_sleep concurrent launcher (_active_zipping_workers = worker count, hide/show farmer, await self.workers_finished).
+2026-04-09 — Tile size 200px: world.gd TILE_SIZE; starting_map TILE_PIXEL_SIZE + atlas/overlays/A*/HUD; world.tscn camera center 12800.
+2026-04-09 — starting_map.gd: procedural atlas Image.create(3800, 200) + scaled fill_rects (already 200px-based).
+2026-04-09 — starting_map.gd: duck pen preview rect 300/600; polytunnel overlay ribs ±50px (200px grid); inspectors/glow use TILE_PIXEL_*.
+2026-04-09 — starting_map.gd: removed TILE_PIXEL_* consts; literal 200 / 100 / 50 for tile grid math and drawing.
+2026-04-09 — starting_map.gd: _px200() scales legacy 256px-tuned overlay art (energy, structures, journey lines, duck halo 400, pen rect).
+2026-04-09 — starting_map.gd: removed _px200(); baked integer distances (legacy×200÷256 floor) for overlay draw paths.
+2026-04-09 — starting_map.gd: `//` for intentional integer division (house placement, heap parent, seasons, profit chunks) to satisfy INTEGER_DIVISION lint.
+2026-04-09 — farm_data_manager.gd + starting_map.gd: `"sprite"` paths on player, dev_helper, recruit_digger/recruit_tender worker dicts.
+2026-04-09 — starting_map.gd: daytime `farmer` Sprite2D loads active worker `sprite` texture; _process swaps texture + resets modulate (no color tint).
+2026-04-09 — starting_map.gd: `_execute_worker_queue` nighttime dash sprite uses worker `sprite` texture (no white square / color tint; removed 0.5 scale).
+2026-04-09 — starting_map.gd: replaced `//` floor division with `int(.../...)` (parser/LSP treated `//` as broken `/`).
+
+2026-04-09 — starting_map.gd: `advance_turn()` maintenance zip uses maintenance worker `sprite` texture (fallback icon + color tint).
+
+2026-04-09 — starting_map.gd: dynamic procedural atlas loads PNGs from `sprites/environment/terrain/grass`, extends tile count, `grass_atlas_xs`; tile loop uses `total_tiles`.
+
+2026-04-09 — starting_map.gd: `_land_to_atlas_x(land, pos)` — deterministic grass from `grass_atlas_xs` for `"wild"`; call sites pass cell coords.
+
+2026-04-09 — starting_map.gd: multi-folder dynamic atlas (grass/stream/river), `stream_atlas_xs`/`river_atlas_xs`, stitch after base fill_rects.
+
+2026-04-09 — starting_map.gd: `_land_to_atlas_x` deterministic stream/river variants (distinct primes vs grass); fallback atlas 14 / 5.
+
+2026-04-09 — starting_map.gd: `update_visuals` / `_update_single_tile_visual` no longer skip bottom river rows (dynamic river tiles paint).
+
+2026-04-09 — starting_map.gd: `terrain/forest` dynamic atlas + `forest_atlas_xs`; `overgrown` uses deterministic forest variants (primes vs grass/water).
+
+2026-04-09 — starting_map.gd: `_land_to_atlas_x` — `forest` biome uses `forest_atlas_xs`; `overgrown` fixed atlas 2 only.
+
+2026-04-09 — starting_map.gd: `_land_to_atlas_x` wild — left strip (x<=6) uses `forest_atlas_xs`; removed dead `forest` match.
+
+2026-04-09 — starting_map.gd: dynamic atlas `terrain/farm_next_door` + `industrial_atlas_xs` stitch.
+
+2026-04-09 — starting_map.gd: `cultivated` — right strip (x >= MAP_SIZE-7) uses `industrial_atlas_xs` hash; else atlas 1.
+
+2026-04-09 — starting_map.gd: dynamic atlas `terrain/cultivated` + `cultivated_atlas_xs`; industrial path `terrain/farmnextdoor`.
+
+2026-04-09 — starting_map.gd: `cultivated` land — industrial strip vs `cultivated_atlas_xs` hash for player farm; fallback atlas 1.
+
+2026-04-09 — starting_map.gd: INTEGER_DIVISION — `>>` for ÷2, float literals for season/chunk division.
+
+2026-04-09 — data/lore.csv + data/dialogue.csv: narrative spreadsheet stubs (day lore + dialogue rows).
+
+2026-04-09 — data/data_narrative.gd: `NarrativeData` class_name; static CSV load for lore + dialogue.
+
+2026-04-09 — starting_map.gd: `_trigger_intro_dialogue`, day-15 failure, `_generate_daily_narrative` use `NarrativeData` CSV data.
+
+2026-04-09 — starting_map.gd: `_spawn_click_particles` (CPUParticles2D); queue cultivate/build/plant feedback.
+
+2026-04-09 — hud.gd: Settings dialog UI Scale slider (`root.content_scale_factor` 0.75–3.0).
+
+2026-04-09 — main_menu.gd: `_ready()` sets `root.content_scale_factor` from `DisplayServer.screen_get_scale()` when > 1.
+
+2026-04-09 — hud.gd + starting_map.gd: removed left status sidebar; Farm Hands stamina bars red/green; `_sync_hud_status` + `_process` drop energy preview hooks.
+
+2026-04-09 — starting_map.gd: `_process_turn_logic` morning triage — floating “Thirsty/Hungry/Needs Sun” warnings (capped, staggered timers).
+
+2026-04-09 — starting_map.gd: `TriageOverlayNode` + `triage_cache` / `_generate_triage_data`; proximity + morning burst; tooltip triage line; wired from `trigger_sleep`.
+
+2026-04-09 — farm_data_manager.gd: `cell_notes` + `scribbles`; cleared in `reset_data`.
+
+2026-04-09 — hud.gd: Design View lens item; `cell_context_menu` + note `AcceptDialog`; `show_context_menu` / handlers for `FarmDataManager.cell_notes`.
+
+2026-04-09 — starting_map.gd: `DesignOverlayNode` (scribbles + cell note markers), design lens + `apply_lens`; right-click menu / left scribble input; design tooltip notes.
+
+2026-04-09 — farm_data_manager.gd: `scribbles` as `Array[Dictionary]` (type/points/thickness). hud.gd: scaled context menu; design toolbar + clear dialog; starting_map: `design_tool`/`design_thickness`, stroke rendering.
+
+2026-04-09 — starting_map.gd: design `_current_shape_data` + shape/eraser input; `DesignOverlayNode` `_draw_scribble`; toolbar visibility inside `apply_lens` normal/design branch.
+
+2026-04-09 — hud.gd: `WindowDragger` (hold-to-drag); Farm Hands window 280×160 + panel dragger; almanac + right info panel draggable via `MarginContainer`.
+
+2026-04-09 — hud.gd: `WindowDragger` uses `window_input` + child of `Window` (no Control blocking); Farm Hands / almanac / right panel wired accordingly.
+
+2026-04-09 — hud.gd: Farm Hands resizable; nested cell context menu (Annotate / Action / Deep Info) + `_on_context_menu_pressed` match ids.
+
+2026-04-09 — starting_map.gd: universal HUD context menu on right-click or Ctrl/Cmd+left (all lenses).
+
+2026-04-09 — hud.gd: `cell_context_menu`, note/clear dialogs, save/load/hotkeys/settings dialogs parented to `CanvasLayer`.
+
+2026-04-09 — world.gd: camera pan drag only on middle mouse (right-click reserved for context menu).
+
+2026-04-09 — world.gd + starting_map.gd: Space+left camera pan; map ignores left-click while Space held.
+
+2026-04-19 — starting_map.gd: undo_last_action removes structural blueprint entries when popping batched build actions.
+
+2026-04-19 — farm_data_manager.gd: added redo_queue (cleared on reset_data).
+
+2026-04-19 — hud.gd: redo_pressed signal; Undo/Redo stacked in VBox in _ready.
+
+2026-04-19 — starting_map.gd: redo queue + redo_action; undo saves batch to redo; clear redo on queue edits; Ctrl+Shift+Z / Ctrl+Y redo hotkeys.
+
+2026-04-19 — main_menu.gd: title text set to WORMFOOD.
+
+2026-04-19 — hud.gd: Ecology Scanner in draggable Window + Codex menu item; minimap reparented (story mode: standalone opener).
+
+2026-04-19 — starting_map.gd: default tool cleared; empty-handed click opens tile inspector via show_tile (no noise texture).
+
+2026-04-19 — hud.gd: WindowDragger bring-to-front (focus + move_child) on left press; set_process kept for hold-timer drag.
+
+2026-04-19 — starting_map.gd: tile hover tooltip only when holding Shift.
+
+2026-04-19 — hud.gd: consolidated top bar (_setup_top_bar: weather, equipped tool, vitals); starting_map.gd: vitals_label prefers hud.vitals_label.
+
+2026-04-19 — hud.gd: _auto_calibrate_ui (content_scale_factor + panel anchors); root.size_changed + deferred startup; removed old right panel snap.
+
+2026-04-19 — hud.gd: removed Energy Vision floating panel (_setup_lens_controls_panel); hud.tscn note updated.
+
+2026-04-19 — hud.tscn: Right_Info_Panel → docked PanelContainer (anchors); hud.gd: drop calibration + docked dashboard/workers styles; starting_map.gd: PanelContainer, no dashboard close_requested.
+
+2026-04-19 — hud.gd: PanelDragger + dockable_panels + _organize_docks (Windows use window_input branch).
+
+2026-04-19 — hud.gd: PanelDragger on Right_Info_Panel + workers dock list; call_deferred _organize_docks at startup.
+
+2026-04-19 — starting_map.gd: explicit Vector2i casts for Variant inference (preview drag, energy overlays).
+
+2026-04-19 — hud.gd: PanelDragger bring-to-front uses typed Node branch (fixes Variant/ternary errors).
+
+2026-04-19 — hud.gd: _organize_docks 6-zone layout (top/mid/bot × left/right; center floats).
+
+2026-04-19 — hud.gd: close buttons (dashboard, workers, inspector); inspector PanelDragger + dock list; refresh skips WorkerCloseButton.
+
+2026-04-19 — hud.gd: unified Info menu (Almanac, codex, scanner, show closed panels + _organize_docks).
+
+2026-04-19 — hud.gd: subtle × close buttons (dashboard, workers, inspector).
+
+2026-04-19 — hud.gd: dev console panel docked (dev_panel, dragger, Info → Show Dev Console).
+
+2026-04-19 — dev_spreadsheet.gd: subtle × close on vbox (removed wide header close button).
+
+2026-04-19 — hud.gd: _organize_docks side-aware from PanelDragger; drag_ended(node); no dashboard height tween.
+
+2026-04-19 — hud.gd: Bottom_Dashboard gui_input brings CanvasLayer child to front on click.
+
+2026-04-19 — hud.gd: PanelResizer inner class (3-line grip, bottom-right); attached to dashboard, workers, inspector, dev panels; resize_ended → _organize_docks.
+
+2026-04-19 — hud.gd: _dock_tween tracker; _organize_docks global snap + distance>1 tween only; PanelDragger.drag_started kills tween.
+
+2026-04-19 — hud.gd: _input brings Bottom_Dashboard to front on LMB over its global rect.
+
+2026-04-19 — hud.gd: PanelResizer restore — resize_ended (no args), _align via global_position; four panels wired to _organize_docks.
+
+2026-04-19 — hud.gd: _organize_docks snap threshold 2.0 px (reduce micro-nudge); _dock_tween/drag_started unchanged.
+
+2026-04-19 — hud.gd: side-aware _organize_docks(dragged_panel); drag_ended passes panel; resize lambdas pass panel; snap >1px + 0.3s; set_process_input for bottom bar.
+
+2026-04-19 — hud.gd: _input top-of-function Bottom_Dashboard bring-to-front (path CanvasLayer/Bottom_Dashboard matches hud.tscn).
+
+2026-04-19 — hud.gd: removed drag_started→kill tween connects; dropped unused PanelDragger.drag_started signal.
+
+2026-05-02 — CODEBASE_GUIDE.md + file-header ## comments on autoloads, world/main_menu/hud/starting_map, data_plants: onboarding for maintainers.
+
+2026-05-02 — docs/CODEBASE_GUIDE.md + README.md link; headers on all data_*.gd; script pointers updated to docs/CODEBASE_GUIDE.md.
+
+2026-05-02 — hud.gd: PanelResizer `resize_ended(dragged_node)` + emit target; all four resizers call `_organize_docks(node)` (bottom bar path already `Bottom_Dashboard`).
+
+2026-05-02 — hud.gd: bottom bar hit-test `get_global_mouse_position`; `kill_dock_tween` + kill on drag/resize start; `_organize_docks` full 6-zone snap (no side-isolation), Right_Info_Panel height clamp, 0.35s tween.
+
+2026-05-02 — world.gd: keyboard pan (arrows) + Shift+Up/Down zoom; `camera_director.gd` comment notes gameplay camera is world.gd.
+
+2026-05-02 — hud.gd `_input`: global bring-to-front via `gui_get_hovered_control` + ancestor walk (dockable panels, Bottom_Dashboard, almanac/scanner windows).
+
+2026-05-02 — hud.gd: PanelDragger + PanelResizer + `dockable_panels` for dynamically loaded info_window (codex).
+
+2026-05-02 — meta_manager.gd: `magnetic_docking` default true, load/save in shadow_logic_meta.json.
+
+2026-05-02 — ui_graphics_panel.gd: Magnetic Docking CheckButton bound to MetaManager + save_meta.
+
+2026-05-02 — hud.gd: `_organize_docks` respects `MetaManager.magnetic_docking`; Info menu toggles + re-center (codex/scanner/panels), menu labels "Toggle …".
+
+2026-05-02 — hud.gd: `_clamp_node_to_screen` for Info toggles (preserve layout, tug into viewport); docking bypass unchanged.
+
+2026-05-02 — obsidian: removed `.gdignore.txt`; added empty `.gdignore` (no extension) for Godot.
+
+2026-05-02 — starting_map.gd: `advance_turn` awaits `_process_turn_logic` (empty bubble + after tween); tween callback only unpause/free worker; demolish uses `call_deferred("advance_turn")` to avoid yielding in `_unhandled_input`.
+
+2026-05-02 — starting_map.gd `_process_turn_logic`: time-slice `await process_frame` every 16 columns (weather, moisture_delta init, MOISTURE_CAP grid, pig tractors, Himalayan balsam).
+
+2026-05-02 — starting_map.gd `_process_turn_logic`: morning triage scan also yields every 16 x-steps.
+
+2026-05-02 — scripts/soil_profile_ui.gd: SoilProfileUI cross-section (`update_profile` V2 schema, fungal veins drawer, litmus/toxicity/vitality).
+
+2026-05-02 — hud.gd: SoilProfileUI in inspector vbox; `build_soil_inspector_stats` / `update_soil_inspector`; `show_tile` feeds live soil slice (starting_map + context menu).
+
+2026-05-02 — soil_profile_ui: `_ensure_ui_built`, guard `_layout_shell`, add_child before anchors, deferred layout; world/camera_director `shake_offset`; starting_map ternary/camera/img/float fixes; unused_signal ignores on FarmDataManager + HUD.
+
+2026-05-02 — soil_profile_ui.gd: `FungalVeinsDrawer` extends `Control` + full-rect anchors (fixes `mouse_filter` crash); save_manager.gd: `save_game(_map_node)`; starting_map.gd: vitals_label if/else, lane `float(93)/…`, lens overlay `Image.create`/`set_pixel` int casts.
+
+2026-05-02 — soil_profile_ui.gd: min size 250×160 + horizontal expand; vitality RTL autowrap off; litmus 12px right strip; `DirtLayer` parented to `BedrockBG` with bottom anchors; toxicity anchored top-right of slice.
+
+2026-05-02 — soil_profile_ui.gd: `SIDE_PANEL_W` + `side_panel` VBox (toxicity + litmus); layout math uses `SIDE_PANEL_W` / `LITMUS_STRIP_W`.
+
+2026-05-02 — soil_profile_ui.gd: removed CPU particles; `BiologyDrawer` (macro capsules + veins); depth/moisture/pH labels; framed bedrock + litmus `Panel`s.
+
+2026-05-02 — hud.gd: dockable `SoilProfilePanel` (`_setup_soil_profile_panel`, drag/resize); soil UI moved out of inspector; `update_soil_inspector` shows panel; hide paired with inspector close/toggle/Q paths (`starting_map.gd`).
+
+2026-05-02 — hud.gd: soil profile back inside inspector; `soil_profile_ui.gd` telemetry-only (VBox, GridContainer, ProgressBars 0–10; removed drawing/core-sample visuals).
+
+2026-05-02 — soil_profile_ui.gd: `_create_stat_row` HBox (name 90 / bar / value 40), grid column mins aligned; bar values `_fmt_bar_stat`; vitality header clarified.
+
+2026-05-02 — hud.gd `show_tile` + starting_map shift-tooltip: removed legacy Water/Nitrogen (and m|n) display lines; `m`/`n` data untouched.
+
+2026-05-02 — data_plants.gd: V2 ecological schema embedded (`_RAW` → ENTRIES); CSV loader removed; codex uses fertility/moisture deltas + soil-web stats; legacy `n_delta`/`m_delta` retained for exchange logic.
+
+2026-05-02 — data_plants.gd V3: `min_nitrogen`/`min_minerals`, `nitrogen_delta`/`mineral_delta`, `toxicity_delta`, `structure_delta`, `macro_life_affinity`, `max_toxicity`, `min_germination_temp`; obsidian `06_Plant_Data_Schema.md` updated.
+
+2026-05-02 — data_plants.gd: CSV-driven via `res://data/plants_v3.csv` (`DATA`, `_load_plants_from_csv`, `get_plant_data`); `_RAW` removed; `seed_picker`/`produce_picker`/`dev_spreadsheet` use `DATA`; migrated rows + `tomato` sample row.
+
+2026-05-02 — plants_v3.csv + schema: `max_nitrogen`/`max_minerals` (default 10); `data_plants.gd` fail-safe defaults (min_* & germ depth 0, affinities/deltas 0, pH 5.5–7.5); codex needs line shows N and mineral bands; `06_Plant_Data_Schema.md` updated.
+
+2026-05-02 — V3.2: `max_moisture` (default 10, root rot ceiling) in `plants_v3.csv` + `_field_defaults`; codex moisture shows min–max; `06_Plant_Data_Schema.md` retitled V3.2.
+
+2026-05-02 — V3.3: `max_temp` (default 40°C heat/bolting) in CSV + `_field_defaults`; codex “heat ≤°C”; `06_Plant_Data_Schema.md` V3.3.
+
+2026-05-02 — `starting_map.gd`: grid init V3 soil (`moisture`/`nitrogen`/`minerals`/…); `_process_plant_biology` gatekeepers + exchange (no `m_delta`/`n_delta`); moisture sim 0–10 + legacy `m`/`n` sync; lenses/pigs/ducks/scaled to V3.
+
+2026-05-02 — Crash/lint: `_on_structure_overlay_draw` safe `land`/bool river check + `str()` keys; `_find_nearest_water` str land; atlas `%` indexing clarified; path-preview ternary uses `Array()`; tile highlight `ts * 0.5`; karma `/ 2.0` via float; `ui_narrative_popup.show_dialogue` `_image_path`.
+
+2026-05-02 — `starting_map.gd`: `_cell_str_nonempty` for plant/structure/ground checks (fixes `float != ""` in `_process` tooltips); hover + `tile_hovered` use `get` + float N/M/W; minimap/balsam/triage/planning/synergy/duck zone aligned with string-safe emptiness.
+
+2026-05-02 — `starting_map.gd` `_process_turn_logic`: all land/structure/zone checks use `str(cell.get(...))` so float grid values cannot hit `==`/`in` with strings; pig/duck/balsam paths updated. `hud.gd`: dev mem MB via float division + `int()`; `Vector2i` positions use `roundi`; PanelDragger ternary branches cast to `Node`; queue `pos` / mouse coords narrowed safely.
+
+2026-05-02 — `starting_map.gd` `_generate_daily_narrative`: `str()` on `structure`/`land` before string compares and `in` checks (V3 float-safe).
+
+2026-05-02 — V3 purge: `_process_turn_logic` drops seasonal global moisture mod, swale/river `moisture_delta` diffusion, per-tile -0.05 drain, cultivated N decay; `_refresh_season_display` replaces `_apply_seasonal_weather`; grid init no `m`/`n`/`w`; `_v3_sync_legacy_mn` no-op; readers use `moisture`/`nitrogen` only; pig/duck add `macro_life`; `hud.gd` moisture display.
+
+2026-05-02 — `_process_turn_logic` V3 weather: grid pass skips infra lands; polytunnel −0.2 only; exposed rain +3 / clear −0.5 / drought −2 / frost −0.5 + frost kill; `clampf` 0–10.
+
+2026-05-02 — V3 plant API: `seed_picker` N/M from `nitrogen_delta`/`moisture_delta` + case-insensitive layer; `starting_map` uses `get_plant_data`, layer `.to_lower()`, `atlas_x` via `.get(...,0)`; `hud` `show_tile` + `dev_spreadsheet` column deltas.
+
+2026-05-02 — `starting_map.gd`: plant `m_cost` from CSV cast with `int(...)` in `_get_planning_e_m_costs` + `_attempt_grid_action`; `current_money -= int(m_cost)`.
+
+2026-05-02 — `starting_map.gd`: plant money cost via `str(...get("cost","0")).to_int()`; `_planning_hover_state` plant uses `_get_planned_cell_state`; plant fail prints → `spawn_floating_text` ("Needs Dirt!" / "Layer Full!").
+
+2026-05-02 — `_process_turn_logic`: mound gentler dry-down (clear/drought/default); swale capillary 5×5 when moisture > 3.
+
+2026-05-02 — `save_manager` `_deserialize_grid`: migrate legacy `m`/`n` → V3 soil keys; `data_plants` yield/energy int + blank→5 (`-1` sentinel); frost kill skips `zone == polytunnel`.
+
+2026-05-02 — `starting_map.gd`: `_cell_has_building_structure` so V3 soil `structure` (float) does not block plants/paths/hover like building ids; replaced `_cell_str_nonempty(...,"structure")` call sites.
+
+2026-05-02 — `starting_map.gd`: comments documenting `cell["structure"]` overload (soil float vs building string), call-site notes + `_v3_apply_default_ecology` assign note.
+
+2026-05-02 — Watering Can: `water_tile` tool (queue 1e/0m, night +3 moisture, sky-blue queue), Actions menu + `hud` queue label; `save_manager` hotkey `Water` (W) → `set_current_tool("water_tile")`.
+
+2026-05-02 — `starting_map.gd`: `existing_act_idx` loop — skip cancelling when `plant`/`water_tile` share a tile (coexist).
+
+2026-05-02 — `seed_picker.gd`: list labels `"%s - £%d"`; Shift+hover `item_hovered` → V3-only tooltip via `get_plant_data`, `CURSOR_HELP`.
+
+2026-05-02 — `seed_picker.gd`: tooltips via `gui_input` + `get_item_at_position` (no `item_hovered`); V3 copy, “Energy yield” line.
+
+2026-05-02 — `seed_picker.gd`: floating `_tooltip_panel` + Label (Shift-hover); `hud.is_blocking_ui_open()` + `_process` guard stops map hover when seed picker visible.
+
+2026-05-02 — `seed_picker.gd`: `_process` hides tooltip when Shift released; compact multi-line `tip` string for shift-hover.
+
+2026-05-02 — `seed_picker.gd`: shift-tooltip clone of map pattern — root `CanvasLayer` (128), styled `PanelContainer` + `RichTextLabel`, `_hovered_plant_id` + `_process`, hide on picker hide/visibility.
+
+2026-05-02 — `seed_picker.gd`: removed `hide()` override; `visibility_changed` lambda hides tooltip + clears `_hovered_plant_id`.
+
+2026-05-02 — `seed_picker.gd`: tooltip soil lines use `%+d/turn`, ASCII `-----` dividers.
+
+2026-05-02 — Removed `scripts/pause_menu.gd` and `starting_map.gd` runtime spawn; HUD `Pause_Overlay` is sole pause UI.
+
+2026-05-02 — `hud.gd`: `CanvasLayer.layer = 100`; hotkeys dialog labels use action names; `save_manager`: removed duplicate KEY_F hotkey entry.
+2026-05-02 — Dropped the deprecated field-gathering action (separate from Cultivate): `hud.gd` actions + cell context menu (ids 203–205); `starting_map.gd` HUD match, planning costs/queue rules, night queue match + default arm, synesthesia list, pig comment; `cursor-action-log.txt` historical lines reworded.
+2026-05-02 — `starting_map.gd`: pig/duck ecology comments + pig-house overlay comment use graze/grazing wording (searches→grazes, slug eats/eaten→graze phrasing, feeding trough→grazing trough).
+2026-05-02 — `starting_map.gd`: `existing_act_idx` elif plant/water_tile skip uses `q_action.get("action", "")` (exact compare, no `str()` wrap).
+2026-05-02 — `starting_map.gd`: `existing_act_idx` water_tile compatible-pairs extended (coexist with cultivate/hoe/build_mound/dig_swale/build_path/additive + symmetric).
+2026-05-02 — `info_window.gd` + `world.gd`: `map_scroll_blocker` group + hover check so wheel/trackpad over codex InfoWindow does not pan/zoom the map camera.
+2026-05-02 — `world.gd`: 1:1 middle/Space-drag pan (no `PAN_SPEED_SCALE` on drag delta); `_process` clamps `desired_pos` then snap-while-drag / lerp-follow when not dragging.
+2026-05-02 — `world.gd`: slower pan/zoom base speeds + softer zoom lerp; follow lerp `_exp_blend` 15→8 for heavier glide.
+2026-05-02 — `starting_map.gd`: default cell moisture +1 (`_v3_apply_default_ecology` mo 5→6; forest wild 7→8; industrial cultivated 1→2).
+2026-05-02 — `dialogue.csv`: permaculture tutorial intro + `tut_day_3/6/9/12`; `starting_map.gd`: scripted forecast (non-dev), £100 + full seeds, tutorial narrative triggers on days 3/6/9/12.
+2026-05-02 — `starting_map.gd`: connect `hud_instance.main_menu_requested` → unpause + `change_scene_to_file("res://scenes/main_menu.tscn")`.
+2026-05-02 — `save_manager.gd` / `starting_map.gd`: hotkey + lens listener rename Moisture→Hydration Lens; lens keys accept `*View` + Design View.
+2026-05-02 — `data/dialogue.csv`: RFC 4180-style quoting + punctuation for intro/tutorial rows; `day_5_workers` / `day_15_failure` quoted; `data_narrative.gd` unchanged.
+2026-05-02 — `dialogue.csv`: `tut_day_8` + `tut_day_15`; `starting_map.gd`: tutorial days 8/15, frost `forecast[0]` when ending day 15 (non-dev), Gen1 failure dialogue moved to morning of day 16.
+2026-05-02 — `starting_map.gd`: `_get_guild_synergy_mult` 3×3 guild scan (preload `data_guilds.gd`); night growth uses `syn_mult` 1.0× guild; harvest yield uses guild peak vs `growth_mult`; rare “Synergy!” float; removed old `_get_synergy_multiplier`.
+2026-05-02 — `data/dialogue.csv`: `tut_day_3` body — swale rain catch + Watering Can priming tip (BBCode `[i]`).
+2026-05-02 — `main_menu.gd`: top-left Master mute `CheckButton`; `hud.gd`: pause menu “Sound Settings” opens `ui_audio_panel.gd` overlay (`PROCESS_MODE_ALWAYS`, `back_pressed` closes).
+2026-05-02 — `starting_map.gd`: tutorial forecast `clear` + two `rain` then two `drought`; `dialogue.csv`: `tut_day_3` retitled Earthworks, rain-before-drought copy.
+2026-05-02 — `data/story_weather.csv` + `scripts/data_scenario.gd` (`DataScenario`); `starting_map.gd`: `_get_weather_for_day`, forecast init/refill/append from CSV (append uses `current_turn + 5`); removed hardcoded forecast + day-15 frost override.
+2026-05-02 — `data_guilds.gd` / `data_upgrades.gd`: expanded guilds + upgrade BBCode; `meta_manager.gd`: `ecto_fungi`, Thick Gloves name; `starting_map.gd`: `ecto_fungi` +20% soil `fungi` gain from plant exchange.
+2026-05-02 — Docs/comments pass: `CODEBASE_GUIDE.md` (story weather, DataScenario, dialogue RFC, guild night scan, pause sound, main mute); file headers + forecast/weather comments in `starting_map.gd` / `hud.gd` / `main_menu.gd`; `data_narrative.gd` dialogue CSV note.
+2026-05-02 — `story_weather.csv`: third rain day + drought days 5–6; `starting_map.gd`: rain +6 on `swale` (+3 elsewhere); swale 5×5 capillary = explicit outflow 2.0/dist capped by budget so tile stays ≥3.0.
+2026-05-02 — `starting_map.gd`: tilemap `land` atlas from grid only (not planned queue); `_on_preview_overlay_draw` translucent cultivate/hoe + water_tile queue markers (`map_to_local`).
+2026-05-02 — `story_weather.csv`: rain days 2–5, drought 6–7; `starting_map.gd`: `SWALE_MOISTURE_MAX` 25 (rain/drought clamp, capillary, post-capillary clamp, night `water_tile`); `dialogue.csv`: `tut_day_3` copy for delayed drought + “incoming rain”.
+2026-05-02 — Weather key `drought`→`dry` (`story_weather.csv`, `weather_types`, `_process_turn_logic`, `_generate_random_weather`); HUD `update_weather_display(is_dry)`; `tut_day_3` + almanac + season copy; legacy `drought` forecast coerced to `dry`.
+2026-05-02 — `starting_map.gd`: swale capillary slow-drip (`MAX_BLEED_PER_TURN` 3, donate only if neighbor `moisture` < 7); Hydration lens (`active_lens == "moisture"`) neon cyan lerp for `moisture` > 10.
+2026-05-02 — `starting_map.gd`: plant death `print` logs (`_v3_kill_plant_stress`, winter frostbite, frost weather kill, desiccation); queue overlay rects for `dig_swale` / `build_mound`.
+2026-05-02 — `starting_map.gd`: `_apply_plant_stress` replaces instant kill (age −0.5, death & log if age < 0; stressed 5% float); growth gatekeeper returns `0.0` if survived stress; `plants_v3.csv` `min_nitrogen` 2 for broad_bean & daikon.
+2026-05-02 — `starting_map.gd` + `world.gd`: death logs add turn + M/N/Min stats (stress, frost, desiccation, frost weather); farmer/worker/zip Sprite2D scale 1.5 + offset (0,-60); Gen1 story `main_camera` snap+zoom 0.8 at farmhouse; `world.gd` event-queue empty: parallel tween zoom+pan to map centre.
+2026-05-04 — `docs/CODEBASE_GUIDE.md`: updated annotations for death-log turn+soil stats, sprite scale/offset, and camera reset/snap behavior.
+2026-05-04 — `starting_map.gd`: Gen1 story start camera zoom adjusted 0.8 → 0.5; `docs/CODEBASE_GUIDE.md` annotation updated.
+2026-05-04 — `hud.gd` + `soil_profile_ui.gd`: soil inspector stats add nitrogen/minerals + plant safe-zone ranges; Soil Profile UI adds Nitrogen/Minerals bars and SafeZone overlays; inspector sizing updated; `CODEBASE_GUIDE.md` annotation updated.
+2026-05-04 — `ui_narrative_popup.gd`: dialogue options failsafe adds Continue button to prevent softlock; `starting_map.gd`: Gen1 story start camera zoom back to 0.8; `world.gd`: event queue reset tweens back to map `home_pos` when available; `CODEBASE_GUIDE.md` annotations updated.
+2026-05-04 — `starting_map.gd`: Gen1 story start camera zoom pulled back (0.8 → 0.5); `CODEBASE_GUIDE.md` annotation updated.
+2026-05-04 — `soil_profile_ui.gd`: bar stat labels use raw sim values (no 0–10 clamp in text); progress bars still clamp; `CODEBASE_GUIDE.md` note.
+2026-05-06 — `data/plants_v3.csv`: lowered pioneer `min_nitrogen`, eased tree mineral needs/consumption, clamped `min_*` thresholds for day-1 survivability.
+2026-05-06 — `starting_map.gd`: Story Mode Gen1 initial camera zoom set to 0.25 for wider farmhouse framing.
+2026-05-06 — `hud.gd`: tile inspector wrapped in ScrollContainer with fixed height so long content scrolls instead of expanding off-screen.
+2026-05-06 — `hud.gd` + `hud.tscn`: wrapped Farm Hands, Dev Console, and Right Info Panel contents in ScrollContainers to prevent overflow when resized.
+2026-05-07 — `hud.gd` + `starting_map.gd`: fixed Right Info Panel node paths after ScrollContainer insert so forecast/events update again.
+2026-05-07 — `hud.gd`: top bar weather row uses shrink left/right + expand center; hid bottom bar’s empty Left+VSeparator after vitals moved up.
+2026-05-07 — `hud.tscn` + `hud.gd`: Right_Info_Panel hugs content (no full-height stretch); forecast RichTextLabel fit_content + no vertical fill; fixed close-button vbox path.
+2026-05-07 — `hud.gd` + `starting_map.gd`: Today's Plan × clears queue (refunds e/£, blueprints, astar, redo cleared).
+2026-05-07 — Dashboard rebuild: removed scene `Right_Info_Panel` + dead bottom vitals column; added runtime `StatusStrip` + `InfoDock` (capped scroll); `starting_map.gd` paths → InfoDock.
+2026-05-07 — `hud.gd`: removed stray `right_info_panel` block (duplicate of InfoDock wiring) that broke HUD parse / Story Mode.
+2026-05-07 — `hud.gd`: InfoDock — set `offset_bottom` and lower `offset_top` (below StatusStrip) so forecast/weather panel has non-zero height on CanvasLayer.
+2026-05-07 — `docs/ARCHITECTURE.txt`: new architecture guide (layers, scenes, autoloads, HUD runtime); `.cursor/rules/architecture-doc.mdc` to keep it updated; `CODEBASE_GUIDE.md` links to it.
+2026-05-07 — Relocated `cursor-action-log.txt` → `docs/cursor-action-log.txt`; `.cursor/rules/action-log.mdc` updated for new path.
+2026-05-07 — `CODEBASE_GUIDE.md` intro + `ARCHITECTURE.txt` revision log reference `docs/cursor-action-log.txt`.
+2026-05-07 — `hud.gd` + `hud.tscn`: fixed collapsed HUD areas — workers ScrollContainer min 260×250; dev console scroll 250×200 + dev_panel min size; StatusStrip explicit min height; InfoDock min 300×400 + DockScroll expand/fill + taller min; bottom dashboard/panel min heights enforced in code + scene.
+2026-05-07 — `hud.gd`: InfoDock DockScroll — removed invalid `custom_maximum_size` (Godot 4.6.2 ScrollContainer); `docs/godot_error_log.txt` resolution note.
+2026-05-07 — `hud.gd`: Design Toolbar moved to left and made vertical (PRESET_CENTER_LEFT + VBox tool stack + thickness subpanel).
+2026-05-07 — `hud.gd`: StatusStrip refactored from top bar to left sidebar (PRESET_LEFT_WIDE, fixed 260px width, VBox layout, right border); InfoDock moved up (offset_top 12).
+2026-05-07 — `hud.gd`: reverted StatusStrip back to top-wide horizontal bar; moved InfoDock spawn to left (PRESET_TOP_LEFT, position 20×100, min 300×400).
+2026-05-07 — Guild Vision lens: `hud.gd` adds “Guild Vision”; `save_manager.gd` default hotkey KEY_4; `starting_map.gd` sets active_lens=guild + hotkey handling + new `GuildOverlayNode` that draws pulsing guild links with `_draw()` and queues redraw while active.
+2026-05-07 — `starting_map.gd`: GuildOverlayNode uses global FarmDataManager singleton (no `map_ref.FarmDataManager`); `hud.gd`: renamed local `wrap` → `audio_wrapper` to avoid shadowed builtin warning.
+2026-05-07 — Difficulty: added `FarmDataManager.difficulty` (reset + save/load); `starting_map.gd` plant stress damage scales by difficulty; `main_menu.gd` adds Difficulty dropdown above Story Mode start.
+2026-05-07 — `starting_map.gd`: plant stress + frostbite now use negative death thresholds (seedling buffer) so new seeds don’t instantly die from first stress tick.
+2026-05-07 — Guild Vision polish: `starting_map.gd` guild lens reuses blackout, click-selects a tile to show 3×3 zone, and draws trait-colored guild links (fixers purple, accumulators blue).
+2026-05-07 — `starting_map.gd`: GuildOverlayNode reads `guild_selected_cell` via direct property access (fixes Object.get() “too many arguments” runtime error).
+2026-05-07 — Superguilds: added `data/data_superguilds.gd` ENTRIES; `starting_map.gd` adds `_get_synergies_for_cell` with role-based superguild matching (3×3 boolean-trait + category tallies).
+2026-05-07 — Guild architecture realignment: standard guild satisfaction/mults are now 1-tile (vertical stack only) via `_is_guild_satisfied` + `_get_guild_synergy_mult`; superguilds remain 3×3 role-based; Guild Vision draws web links only when superguilds are active.
+2026-05-07 — `starting_map.gd`: GuildOverlayNode visuals finalized — standard guilds draw golden 1-tile aura; superguilds draw purple 3×3 web; booleans explicitly typed (fixes has_all inference error).
+2026-05-07 — Guild Vision overhaul: added greyscale screen shader overlay (replaces blackout for guild lens), enlarged standard guild indicators (90/95px, 8px stroke), synergies now return full guild/superguild dicts, tile inspector shows desc/mults, almanac includes superguild entries.
+2026-05-07 — Guild Vision perf: replaced screen-texture shader with simple dark tactical ColorRect overlay; cranked indicators to neon (magenta superguild web, neon gold guild aura) with thicker strokes/lines.
+2026-05-07 — Guild Vision: switched tactical tint to “slate wash” overlay (muted mid-grey) for better map readability; ensured indicators remain thick/vivid (10px web lines, 8px rings).
+2026-05-07 — `hud.gd`: added dynamic Almanac Vault UI (`_open_almanac_vault`) that scans `res://data/almanac/*.md` and renders in dual-pane reader; Info→Almanac now opens Vault.
+2026-05-07 — Guild Vision background: replaced slate wash ColorRect with optimized screen-texture desaturation shader (filter_nearest, bright washed luminance) for better readability/perf.
+2026-05-07 — `hud.gd`: Tile Inspector now becomes a dedicated Guild Inspector when guild lens is active (roles per-plant + active guild/superguild requirements).
+2026-05-07 — `hud.gd`: Almanac Vault centered via CenterContainer; scanner supports underscore/space filenames and prints “✅ Almanac Loaded” per page; close button frees wrapper container.
+2026-05-07 — `hud.gd`: show_tile cleanup — removed duplicate map_node/synergies injection block after Guild Inspector override to fix redeclaration error.
+2026-05-08 — Almanac Vault librarian pass: created `data/almanac/10_…23_*.md` definitive set with updated [[links]] + TOC; deleted original Obsidian markdown pages under `obsidian/P4S Obsidian Design Docs/`.
+2026-05-08 — Restored `obsidian/P4S Obsidian Design Docs/` markdown pages by recreating missing files and copying `data/almanac/*.md` back into Obsidian folder (plus legacy duplicate filenames).
+
+2026-05-08 — Deleted root `.godot/` engine cache folder; verified `obsidian/.gdignore` exists (blank) so Godot ignores notes.
+2026-05-08 — `scripts/hud.gd`: explicitly typed `saves: Array[String]` from `SaveManager.get_saved_games()` to fix type inference error.
+2026-05-08 — `project.godot`: restored `[autoload]` singletons (FarmDataManager/MetaManager/SaveManager/RadioManager) with explicit `res://scripts/*.gd` paths.
+2026-05-08 — `project.godot`: set `run/main_scene` to `res://scenes/main_menu.tscn` to prevent booting into an uninitialized map.
+2026-05-08 — `project.godot`: added `[display]` baseline (1920×1080 viewport, 1280×720 window override) + canvas stretch settings.
+2026-05-08 — UI scale sliders: switched from `value_changed` to `drag_ended` apply to prevent feedback jitter (`scripts/hud.gd`, `scripts/ui_graphics_panel.gd`).
+2026-05-08 — Compost Tea tool (`apply_tea`) + Compost Brewer build (`compost_brewer`, £40): `hud.gd` menus/queue labels, `data/data_objects.gd`, `starting_map.gd` queue/planning/night execution/overlays/A*.
+2026-05-10 — Wild flora pass: `starting_map.gd` populates wild tiles with ground/understory/canopy plants + starter ages; added `grass/heather/bramble/bracken` rows to `data/plants_v3.csv`.
+2026-05-10 — Wild flora safety: skip procedural flora on tiles whose `cell["structure"]` is a non-empty String (prevents spawning inside farmhouse/fixtures).
+2026-05-23 — Boot fix: removed empty nested `p-4s-nitrogen-tea-and-fucking-plants-everywhere/` stub (no scenes/scripts); real project is workspace root `project.godot`.
+2026-05-23 — Restored `project.godot` [autoload] + [display]; `main_menu.gd` uses `/root/` refs for FarmDataManager/SaveManager.
+2026-05-23 — House flora fix: clear plant data when stamping farmhouse; `update_visuals` skips plants on infra land (house/road/river/…).
+2026-05-23 — Open Core: `obsidian/10_Open_Core_Architecture.md`; moved art/audio to `assets/base/`; updated `.gd` media paths; `.gitignore` `assets/premium/`.
+2026-05-23 — `.gitignore`: Godot/OS shields + Open Core (`assets/premium/`, `data/dialogue.csv`, `data/story_weather.csv`).
+2026-05-23 — `obsidian/11_Premium_Ghost_Story_Archive.md`: GDD for ghost/roguelike layer + code map; linked from `10_Open_Core_Architecture.md`.
+2026-05-23 — OSS prep: `.gitignore` shield; generic Insight/meta loop; `data_upgrades.gd` + `meta_manager.gd`; `dialogue.csv`/`lore.csv` training sim; UI copy (Meta-Dashboard, Ecosystem Collapsed).
+2026-05-23 — Rebrand WORMFOOD → Permaculture 4 Squares (`main_menu.gd`, README, ARCHITECTURE, obsidian/docs).
+2026-05-23 — `project.godot`: default window 2560×1440 (2× prior 1280×720 override); viewport stays 1920×1080.
+2026-05-23 — Graphics: `SaveManager` display presets + persisted settings; `ui_graphics_panel` Apply button (preview before save).
+2026-05-23 — Graphics Apply: live `get_window()` resize + center; monitor clamp → 1280×720 fallback; saved settings match applied size.
+2026-05-23 — Graphics Apply fix: `WINDOWED` before `DisplayServer.window_set_size`; await frame; center via `move_to_center()`.
+2026-05-23 — Graphics: skip `window_set_size` / center when `get_window().is_embedded()` (editor game tab).
+2026-05-23 — Creative Mode: `farm_data_manager` `is_creative_mode` + `reset_data(overrides)`; `ui_creative_setup.gd`; main menu launch/cancel wiring.
+2026-05-23 — Ultimate Creative Sandbox: zen/weatherproof/infinite-water/time-lapse flags; scroll setup UI; `starting_map` biology/weather/water hooks.
+2026-05-23 — `data/data_plants.gd`: CSV export + `load_custom_database`; `dev_spreadsheet.gd` editable Tree, toolbar, FileDialog export.
+2026-05-23 — `ui_pixel_painter.gd` 50×50 editor + sprite save/export; `dev_spreadsheet` Paint column; `starting_map` custom atlas registration.
+2026-05-23 — Main menu Mod: Database Editor / Sprite Painter; Creative Sandbox custom CSV + sprite pack picks; `reset_data` loads mods on boot.
+2026-05-23 — `ui_pixel_painter.gd`: MS Paint tools, 50–200px canvas, checkerboard/solid bg, toolbar UI overhaul.
+2026-05-23 — `ui_pixel_painter.gd`: undo stack (20 steps) + Select cut/drag/stamp with dashed overlay.
+2026-05-23 — `starting_map.gd`: boot-time stitch of `user://databases/sprites/*.png` into procedural atlas + `atlas_x` override.
+2026-05-23 — `ui_pixel_painter.gd`: sprite library sidebar, Load Selected, Save/Save As with duplicate guard.
+2026-05-23 — Pixel painter: asset category prefixes, `target_id` new-asset mode, Save decoupled from DB; Apply to Database only from editor.
+2026-05-23 — `main_menu.gd`: Sprite Painter opens in new-asset mode (no plant picker).
+2026-05-23 — Auto-harvest/sell toggles + manual energy bonus: `farm_data_manager`, `ui_gameplay_panel`, pause HUD, creative setup, `starting_map` inventory path; `SaveManager` gameplay prefs.
+2026-05-23 — Physical `inventory` + `data_items.gd`; manual Harvest / Chop & Drop tools; auto-farm stores to inventory when sell off.
+2026-05-23 — `starting_map.gd`: cultivate clears canopy/understory/ground (queued preview + overnight execution).
+2026-05-23 — Renamed Cultivate tool → Rotovate (`rotovate` action id); land type `cultivated` unchanged; hotkey/settings migration.
+2026-05-23 — UI label Rotovator (noun) for equipped strip, actions menu, hotkeys; internal id remains `rotovate`.
+2026-05-23 — Custom radio Phase 1: `user://audio/radio/` station scan, MP3/OGG playback, `ui_audio_panel` mode/station/skip UI.
+2026-05-23 — Asset Hub Phase 2: `ui_asset_hub.gd` (file tree, embedded spreadsheet/painter, inspector); main menu → P4S Asset OS; editors embed as PanelContainer.
+2026-05-23 — Asset Hub Phase 3: `row_selected` linker (spreadsheet → inspector preview, Draw/Edit Sprite → `setup_for_target_id`).
+2026-05-23 — Dynamic map/campaigns: `FarmDataManager` map_width/height/bounds; `starting_map` uses dynamic size; `ui_campaign_select` + `DataScenario.get_campaigns()`; main menu Play Campaign.
+2026-05-23 — Campaign-aware narrative/weather CSV paths; Wormfood-only Karma/reincarnation, Energy Vision, Pass On (End Run).
+2026-05-23 — Wormfood fixes: campaign overrides + reset before launch; dynamic camera limits; farmhouse snap; `campaigns/wormfood/` CSV copies.
+2026-05-23 — Wormfood campaign map restored to 128×128 (bounds x 6–121); defaults and camera zoom match standard map.
+2026-05-23 — Neon Roots (`automata`) campaign: sprinkler/drone_hub build + overnight automation loop.
+2026-05-23 — Greening the Desert (`desert`): barren sand grid, harsh evaporation, turn-15 Moisture Net (£75) build/drip/overlay; `hud.refresh_build_menu()`.
+2026-05-23 — Neon Roots (`automata`): acid rain/scorcher weather, Smart Shade (£200), Drone Pollinator (£300), toxicity stress, £2000 start.
+2026-05-23 — Pollination: `flowering_seasons`/`pollination_bonus` in plants_v3.csv; Beehive (£80), overnight bee scan, harvest yield bonus.
+2026-05-23 — Asset Hub Phase 4: `ui_map_editor.gd` (terrain paint, soil inspector, 3×3 home); custom `starting_grid.json` boot in FarmDataManager/starting_map.
+2026-05-23 — Asset Hub tabs (Art/Data/Audio/Map Editor), `user://campaigns/` + `.json` in file tree; `load_grid_from_file()`.
+2026-05-23 — Pixel Painter: emoji toolbar (ButtonGroup), brush size slider 1–10px, `_paint_pixel_brush()`.
+2026-05-23 — Asset Manager: bright theme, List/Icon file views, sortable tree columns, icon grid selection.
+2026-05-23 — Heritage Garden (`heritage_garden`): rich soil, no stress death, gentle weather, auto-harvest/sell on boot.
+2026-05-23 — Oakhaven Defence (`oakhaven_defence`): political metrics + HUD bar, mature food-forest grid, NPC occupancy (`trustee_hargreaves`, `sylva_student`) in `starting_map.gd` / `farm_data_manager.gd` / `hud.gd` / `data_scenario.gd`.
+2026-05-23 — `GodotDocsLog` autoload (`scripts/godot_docs_log.gd`): appends console/errors to `docs/godot_error_log.txt` via OS Logger API.
+2026-05-23 — Fix Godot 4.6 `%d` format errors (`data_plants.as_int`, seed/hud/produce tooltips); quieter resolution clamp in editor embed; log WARN vs ERROR tags.
+2026-05-23 — `godot_docs_log.gd`: richer error blocks (kind, at/file/line, code, GDScript backtraces); `project.godot` `always_track_call_stacks`.
+2026-05-23 — Godot logs: rotated `docs/godot_error_log_YYYY-MM-DD_HH-mm-ss.txt` in project `docs/` (keep 10); `docs/godot_error_log.txt` index.
+2026-05-23 — Campaign launch: `farm_data_manager.reset_data` reads `width`/`height`/`bounds`; `ui_campaign_select` double-click/Enter launch (no Launch button).
+2026-05-23 — All campaigns in `data_scenario.gd` unified to 100×100, bounds [6, 93]; removed wormfood 128×128 override in `ui_campaign_select.gd`.
+2026-05-23 — Map editor save: `make_dir_recursive_absolute` on globalized `user://campaigns/custom/`; farm custom grid load optional with procedural fallback.
+2026-05-23 — Display defaults for 16" MacBook Pro: `project.godot` + `save_manager.gd` 1920×1200 (16:10), fallback 1728×1117, Retina UI scale presets.
+2026-05-23 — Boot borderless fullscreen: viewport 2560×1600, clear window overrides, UI scale 1.0 + stretch; settings migration v1 in `save_manager.gd`.
+2026-05-23 — Stitch sidebars: `ui_sidebar_dock.gd` + `ui_sidebar_widget.gd`; HUD panels docked L/R, drag-reorder, `map_scroll_blocker` (no map zoom on wheel).
+2026-05-23 — Sidebar UX: codex/almanac in right rail, `MapScrollBlockerUtil`, drag ghost+placeholder, focus scroll+yellow flash on Info menu open.
+2026-05-23 — Restored center Plant Codex + Almanac Vault popups; kept `MapScrollBlockerUtil` scroll isolation (sidebars unchanged).
+2026-05-23 — Fix sidebar drag crash (`UIInputUtil` null viewport); `_raise_hud_chrome` keeps toolbar/menu popups above almanac overlay.
+2026-05-23 — Map Editor: removed boot `AcceptDialog` popups; missing grid → `push_warning`; load deferred until Map tab open.
+2026-05-23 — hud.gd: toolbar `PopupMenu` uses `Window.FLAG_ALWAYS_ON_TOP` instead of invalid `z_index`.
+2026-05-23 — Time Machine: 50-turn snapshots; ◀/▶ + ticked slider; scrub to replay; first edit branches (drops future); sleep commits new timeline (creative/dev).
+2026-05-23 — Time Machine: draft edits keep original future until sleep; undo/clear queue restores ◀/▶ forward to official timeline.
+2026-05-28 — hud.gd: Lenses menu now always includes Energy Vision (no longer wormfood-only).
+2026-05-29 — starting_map.gd: duck corridors zone-only (no grey path atlas); vector patrol overlay; Energy Vision global (removed wormfood lens gate).
+2026-05-29 — farm_data_manager: current_power/max_power/stored_water + player_bounds_left/right; starting_map overnight solar/water hooks; data_objects + hud solar_array/water_butt.
+2026-05-29 — GVCS: current_power/current_water pools; solar_panel/water_butt generation; e_tiller/hosepipe tools; hud vitals + build/actions menus.
+2026-05-29 — GVCS power cap: base 10 + solar×5 + battery×100; battery build/demolish; solar generation-only; clamp on storage loss.
+2026-06-04 — `project.godot`: restored `[autoload]` (GodotDocsLog + Save/Farm/Meta/Radio), `always_track_call_stacks`, `[display]` after opencore fork stripped them.
+2026-06-04 — `ui_graphics_panel.gd`: `disp` explicitly typed `Dictionary` (SaveManager inference); autoload order aligned in `project.godot`.
+2026-06-04 — Open-core: `opencore_dialogue.csv` / `opencore_weather.csv`; `data_scenario.gd` single `tutorial` campaign; `farm_data_manager` + `ui_campaign_select` + narrative path wiring.
+2026-06-04 — `ui_map_editor.gd`: strict brush/farmhouse tool gating, drag bounds checks, UI hints instead of farmhouse `push_warning` spam.
+2026-06-04 — Permaculture 101: `opencore_weather.csv` / `opencore_dialogue.csv` 10-day curriculum; tutorial narrative match + forecast flash (`hud.gd`).

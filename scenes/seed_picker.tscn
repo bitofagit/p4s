@@ -1,0 +1,54 @@
+[gd_scene load_steps=3 format=3 uid="uid://c8m2vseedpckr"]
+
+[ext_resource type="Script" path="res://scripts/seed_picker.gd" id="1_sp"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sp"]
+bg_color = Color(0.1, 0.1, 0.08, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.2, 0.6, 0.2, 1.0)
+
+[node name="SeedPicker" type="PanelContainer"]
+custom_minimum_size = Vector2(400, 300)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -150.0
+offset_right = 200.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_sp")
+script = ExtResource("1_sp")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "SELECT SEED TO PLANT"
+horizontal_alignment = 1
+
+[node name="TabContainer" type="TabContainer" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Canopy" type="ItemList" parent="VBoxContainer/TabContainer"]
+layout_mode = 2
+
+[node name="Understory" type="ItemList" parent="VBoxContainer/TabContainer"]
+visible = false
+layout_mode = 2
+
+[node name="Ground" type="ItemList" parent="VBoxContainer/TabContainer"]
+visible = false
+layout_mode = 2
+
+[node name="Cancel_Button" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Cancel"

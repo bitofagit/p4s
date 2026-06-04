@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cxgql6vj8kydu"
+
+[deps]
+
+files=["res://data/opencore_dialogue.title.translation", "res://data/opencore_dialogue.body.translation", "res://data/opencore_dialogue.options.translation", "res://data/opencore_dialogue.en.translation"]
+
+source_file="res://data/opencore_dialogue.csv"
+dest_files=["res://data/opencore_dialogue.title.translation", "res://data/opencore_dialogue.body.translation", "res://data/opencore_dialogue.options.translation", "res://data/opencore_dialogue.en.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

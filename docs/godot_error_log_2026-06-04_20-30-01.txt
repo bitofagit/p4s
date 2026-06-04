@@ -1,0 +1,2 @@
+--- session 2026-06-04T20:30:01 ---
+Godot 4.6.2-stable (official) | log: /Users/apple/Documents/P4S/P4S 9.5.26 im taking the campaigns out to go opencore/docs/godot_error_log_2026-06-04_20-30-01.txt

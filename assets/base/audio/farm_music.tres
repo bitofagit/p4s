@@ -1,0 +1,26 @@
+[gd_resource type="AudioStreamInteractive" format=3 uid="uid://dyr43ccm0wdsm"]
+
+[ext_resource type="AudioStream" uid="uid://4ybm0h4d0120" path="res://assets/base/audio/beats/idle.wav" id="1_r02fp"]
+[ext_resource type="AudioStream" uid="uid://dd54we1e4u8hm" path="res://assets/base/audio/beats/planning.wav" id="2_4l3bp"]
+[ext_resource type="AudioStream" uid="uid://ce1vj3v20w87t" path="res://assets/base/audio/beats/dash.wav" id="3_834e4"]
+
+[resource]
+clip_count = 3
+clip_0/name = &"Idle"
+clip_0/stream = ExtResource("1_r02fp")
+clip_0/auto_advance = 1
+clip_0/next_clip = 1
+clip_1/name = &"Planning"
+clip_1/stream = ExtResource("2_4l3bp")
+clip_1/auto_advance = 0
+clip_2/name = &"Dash"
+clip_2/stream = ExtResource("3_834e4")
+clip_2/auto_advance = 0
+_transitions = {
+Vector2i(-1, 0): {
+"fade_beats": 0.6,
+"fade_mode": 4,
+"from_time": 0,
+"to_time": 0
+}
+}

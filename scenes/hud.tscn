@@ -1,0 +1,251 @@
+[gd_scene format=3 uid="uid://blw23ks2p1u3w"]
+
+[ext_resource type="Script" uid="uid://by2yh8f0qf82j" path="res://scripts/hud.gd" id="1_hud"]
+[ext_resource type="PackedScene" uid="uid://c8m2vseedpckr" path="res://scenes/seed_picker.tscn" id="3_seedpick"]
+[ext_resource type="PackedScene" uid="uid://dp2vprodpckr" path="res://scenes/produce_picker.tscn" id="4_produce"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.11, 0.1, 0.09, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.36, 0.33, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sleep"]
+content_margin_left = 14.0
+content_margin_top = 12.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+bg_color = Color(0.16, 0.2, 0.12, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.42, 0.52, 0.32, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="HUD" type="Control" unique_id=437747594]
+process_mode = 3
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_hud")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1665030051]
+
+[node name="Lens_UI_Note" type="Node" parent="CanvasLayer" unique_id=1127465644]
+editor_description = "Energy Vision is selected from the Lenses menu (hud.gd), not a separate panel in the scene."
+
+[node name="Bottom_Dashboard" type="MarginContainer" parent="CanvasLayer" unique_id=916628329]
+custom_minimum_size = Vector2(0, 120)
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -120.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="PanelContainer" type="PanelContainer" parent="CanvasLayer/Bottom_Dashboard" unique_id=1356272303]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="CanvasLayer/Bottom_Dashboard/PanelContainer" unique_id=1383164365]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Middle" type="HBoxContainer" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer" unique_id=2078166830]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="Actions_Menu" type="MenuButton" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Middle" unique_id=658317861]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "🛠️ Actions"
+flat = false
+
+[node name="Build_Menu" type="MenuButton" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Middle" unique_id=658317862]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "🏗️ Build"
+flat = false
+
+[node name="Lenses_Menu" type="MenuButton" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Middle" unique_id=252507735]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "👁️ Lenses"
+flat = false
+
+[node name="Inventory_Menu" type="MenuButton" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Middle" unique_id=1142525846]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "🎒 Inventory"
+flat = false
+
+[node name="Info_Menu" type="MenuButton" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Middle" unique_id=1142525847]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "📖 Info"
+flat = false
+
+[node name="VSeparator2" type="VSeparator" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer" unique_id=1760197756]
+layout_mode = 2
+
+[node name="Undo_Button" type="Button" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer" unique_id=1421146201]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "↩ Undo"
+
+[node name="Sleep_Button" type="Button" parent="CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer" unique_id=1421146202]
+custom_minimum_size = Vector2(200, 80)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_colors/font_color = Color(0.96, 0.95, 0.88, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("StyleBoxFlat_sleep")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_sleep")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sleep")
+text = "SLEEP / NEXT TURN"
+
+[node name="Pause_Overlay" type="ColorRect" parent="CanvasLayer" unique_id=501000001]
+process_mode = 3
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="CenterContainer" type="CenterContainer" parent="CanvasLayer/Pause_Overlay" unique_id=501000002]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="CanvasLayer/Pause_Overlay/CenterContainer" unique_id=501000003]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer" unique_id=501000004]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Pause_Title" type="Label" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000005]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "PAUSE MENU"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000006]
+layout_mode = 2
+
+[node name="Resume" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000007]
+layout_mode = 2
+text = "Resume"
+
+[node name="Save_Game" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000008]
+layout_mode = 2
+text = "Save Game"
+
+[node name="Load_Game" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000009]
+layout_mode = 2
+text = "Load Game"
+
+[node name="Settings" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000010]
+layout_mode = 2
+text = "Settings"
+
+[node name="Hotkeys" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000011]
+layout_mode = 2
+text = "Hotkeys"
+
+[node name="Main_Menu" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000012]
+layout_mode = 2
+text = "Main Menu"
+
+[node name="SeedPicker" parent="CanvasLayer" unique_id=461116770 instance=ExtResource("3_seedpick")]
+
+[node name="ProducePicker" parent="CanvasLayer" unique_id=553323813 instance=ExtResource("4_produce")]
+
+[node name="Modal_Dimmer" type="ColorRect" parent="CanvasLayer" unique_id=611125046]
+visible = false
+z_index = 100
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.5)
+
+[node name="Almanac_Window" type="Window" parent="CanvasLayer" unique_id=1642203283]
+title = "Almanac"
+initial_position = 2
+size = Vector2i(800, 600)
+visible = false
+wrap_controls = true
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer/Almanac_Window" unique_id=1466099937]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/Almanac_Window/MarginContainer" unique_id=224846602]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="TitleRow" type="HBoxContainer" parent="CanvasLayer/Almanac_Window/MarginContainer/VBoxContainer" unique_id=2752307]
+layout_mode = 2
+size_flags_vertical = 0
+
+[node name="Almanac_Title" type="Label" parent="CanvasLayer/Almanac_Window/MarginContainer/VBoxContainer/TitleRow" unique_id=2106214519]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "The Almanac"
+
+[node name="Almanac_Close_Button" type="Button" parent="CanvasLayer/Almanac_Window/MarginContainer/VBoxContainer/TitleRow" unique_id=259463241]
+layout_mode = 2
+text = "Close [X]"
+
+[node name="Almanac_Content" type="RichTextLabel" parent="CanvasLayer/Almanac_Window/MarginContainer/VBoxContainer" unique_id=1310481116]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+bbcode_enabled = true

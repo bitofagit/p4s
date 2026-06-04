@@ -1,0 +1,3 @@
+--- session 2026-05-26T10:00:59 ---
+Godot 4.6.2-stable (official) | log: /Users/apple/Documents/P4S/P4S 9.5.26 nitrogen tea and fucking plants everywhere/docs/godot_error_logs/godot_error_log_2026-05-26_10-00-59.txt
+[10:00:59] [LOG] Successfully loaded 25 plants from plants_v3.csv (V3.3).

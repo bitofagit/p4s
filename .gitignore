@@ -1,0 +1,18 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Open-core shields — premium narrative & campaign packs (do not publish)
+data/dialogue.csv
+data/dialogue.csv.import
+data/dialogue.*.translation
+data/story_weather.csv
+data/story_weather.csv.import
+data/story_weather.*.translation
+data/lore.csv
+data/lore.csv.import
+campaigns/
+assets/premium/
+
+# Internal design notes (includes premium story archive)
+obsidian/

@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://dp2vprodpckr"]
+
+[ext_resource type="Script" path="res://scripts/produce_picker.gd" id="1_pp"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pp"]
+bg_color = Color(0.1, 0.1, 0.08, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.8, 0.6, 0.2, 1)
+
+[node name="ProducePicker" type="PanelContainer"]
+custom_minimum_size = Vector2(400, 300)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -150.0
+offset_right = 200.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_pp")
+script = ExtResource("1_pp")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "PRODUCE INVENTORY"
+horizontal_alignment = 1
+
+[node name="Item_List" type="ItemList" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HBoxContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Btn_Eat" type="Button" parent="VBoxContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Eat (Energy)"
+
+[node name="Btn_Sell" type="Button" parent="VBoxContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sell (Capacity)"
+
+[node name="Btn_Close" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Close"

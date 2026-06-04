@@ -1,0 +1,19 @@
+# P4S Godot error log index (auto-generated — do not edit)
+#
+# Convention: docs/godot_error_log_YYYY-MM-DD_HH-mm-ss.txt (project folder, not user://)
+# Retention: newest 10 session files; oldest deleted on each new run.
+#
+# Current session:
+docs/godot_error_log_2026-06-04_21-13-59.txt
+#
+# Recent sessions (newest first):
+- docs/godot_error_log_2026-06-04_21-13-59.txt
+- docs/godot_error_log_2026-06-04_21-06-28.txt
+- docs/godot_error_log_2026-06-04_20-57-17.txt
+- docs/godot_error_log_2026-06-04_20-55-29.txt
+- docs/godot_error_log_2026-06-04_20-51-50.txt
+- docs/godot_error_log_2026-06-04_20-40-52.txt
+- docs/godot_error_log_2026-06-04_20-40-16.txt
+- docs/godot_error_log_2026-06-04_20-38-58.txt
+- docs/godot_error_log_2026-06-04_20-38-55.txt
+- docs/godot_error_log_2026-06-04_20-30-01.txt

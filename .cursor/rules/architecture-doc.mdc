@@ -1,0 +1,10 @@
+---
+description: Keep docs/ARCHITECTURE.txt in sync when project structure changes
+alwaysApply: true
+---
+
+# Architecture document
+
+When work **meaningfully changes** project architecture — new or removed **autoload**, **main scene** flow, **HUD / CanvasLayer** layout or naming (e.g. StatusStrip, InfoDock paths), **primary ownership** of game state, or **save/meta** boundaries — **update `docs/ARCHITECTURE.txt`**: adjust the affected section(s) and append **one line** to the **Revision log** at the bottom (date + what changed).
+
+For small UI-only tweaks that do not alter structure, an entry in **`docs/cursor-action-log.txt`** is enough; update ARCHITECTURE only when the mental model of the stack would mislead a reader.

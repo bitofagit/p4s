@@ -1,0 +1,7 @@
+day,title,body,options,speaker
+tut_day_1,"1. Ground Zero","Welcome to the Permaculture 4 Squares simulator. Your first task is to repair this soil. Select the Rotovator tool, prepare a few tiles, and plant some fast-growing White Clover to fix nitrogen.","Get to work",
+tut_day_2,"2. Catch and Store","Look at your Almanac forecast (Top Right). Tomorrow brings Rain, but it is followed by a two-day Drought. Select 'Dig Swale' and dig a trench across your farm. Tomorrow, it will catch the rain.","I'll start digging",
+tut_day_4,"3. Passive Irrigation","The Drought is here! But look at your Swale. Because it caught yesterday's rain, it is now slowly bleeding moisture into the adjacent tiles. Your plants survive without you lifting a Watering Can.","Incredible",
+tut_day_6,"4. The GVCS Grid","You have mastered water; now master energy. It is raining today. Open your Build menu and construct a Water Butt next to your farmhouse to catch the run-off. Then, build a Solar Panel to catch tomorrow's sun.","Building infrastructure",
+tut_day_8,"5. Power Tools","Your Solar Panel absorbed yesterday's clear skies, filling your battery. You can now equip the E-Tiller. It uses electrical charge instead of your physical stamina, allowing you to prepare massive areas instantly.","Power up",
+tut_day_10,"6. Vertical Stacking","You are ready. Try planting an Apple Tree, and plant Comfrey on the exact same tile. They occupy different vertical layers (Canopy and Groundcover) and will share nutrients. Good luck!","Graduation",

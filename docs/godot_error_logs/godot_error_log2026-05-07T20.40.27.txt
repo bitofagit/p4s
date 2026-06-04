@@ -1,0 +1,62 @@
+Godot Engine v4.6.2.stable.official.71f334935 - https://godotengine.org
+Metal 4.0 - Forward+ - Using Device #0: Apple - Apple M4 Pro (Apple9)
+
+Successfully loaded 21 plants from plants_v3.csv (V3.3).
+Equipped Tool: cultivate
+🎵 VIBE SHIFT: Changing music state to -> Planning
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+Warning: Planted in poor soil missing: well aerated, full o worms
+Not enough Energy or Capacity to do this!
+🎵 VIBE SHIFT: Changing music state to -> Dash
+🎵 VIBE SHIFT: Changing music state to -> Idle
+Turn advanced to: 2
+Warning: Planted in poor soil missing: well aerated
+🎵 VIBE SHIFT: Changing music state to -> Planning
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+Warning: Planted in poor soil missing: well aerated
+🎵 VIBE SHIFT: Changing music state to -> Dash
+🎵 VIBE SHIFT: Changing music state to -> Idle
+Turn advanced to: 3
+Warning: Planted in poor soil missing: well aerated, full o worms
+🎵 VIBE SHIFT: Changing music state to -> Planning
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+Warning: Planted in poor soil missing: well aerated, full o worms
+🎵 VIBE SHIFT: Changing music state to -> Dash
+🎵 VIBE SHIFT: Changing music state to -> Idle
+Turn advanced to: 4
+🎵 VIBE SHIFT: Changing music state to -> Planning
+🎵 VIBE SHIFT: Changing music state to -> Dash
+🎵 VIBE SHIFT: Changing music state to -> Idle
+Turn advanced to: 5
+Tool cleared. Inspection mode active.

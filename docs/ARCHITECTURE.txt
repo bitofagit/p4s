@@ -1,0 +1,175 @@
+================================================================================
+Permaculture 4 Squares (P4S) — PROJECT ARCHITECTURE (Godot 4.x)
+================================================================================
+
+MAINTENANCE
+-----------
+When you change how the game is structured (new autoload, main scene swap,
+HUD scene tree / CanvasLayer layout, where save state lives, or primary
+data-flow between map and UI), update the relevant sections below and append
+one line to the “Revision log” at the bottom. Task-oriented “where do I edit
+X?” help stays in docs/CODEBASE_GUIDE.md; this file is the structural map.
+
+
+--------------------------------------------------------------------------------
+1. LAYERS (TOP-DOWN)
+--------------------------------------------------------------------------------
+
+  [ Player / viewport ]
+           |
+           v
+  +------------------+     +------------------+
+  |  HUD (Control)   |     |  World (Node2D)  |
+  |  hud.tscn/gd     |     |  world.tscn      |
+  |  CanvasLayer UI  |     |  TileMapLayer    |<-- starting_map.gd (gameplay)
+  +--------+---------+     +--------+---------+
+           |                        |
+           |    signals / refs      |  reads/writes FarmDataManager
+           +-----------+------------+
+                       v
+              +------------------+
+              | Autoload singletons |
+              | FarmDataManager, SaveManager, MetaManager, RadioManager |
+              +------------------+
+                       |
+                       v
+              +------------------+
+              | user:// JSON +   |
+              | data/*.csv       |
+              +------------------+
+
+- Simulation authority: FarmDataManager (current farm run).
+- Orchestration / tools / tiles / narrative hooks: starting_map.gd on the map.
+- View / input chrome: HUD; camera bounds and pan/zoom: world.gd on Camera2D.
+- Cross-save meta: MetaManager. Audio coordination: RadioManager.
+
+
+--------------------------------------------------------------------------------
+2. SCENE FLOW
+--------------------------------------------------------------------------------
+
+project.godot run/main_scene -> main_menu.tscn (scripts/main_menu.gd)
+    -> change_scene to scenes/world.tscn
+
+world.tscn
+    World (Node2D)
+      TileMapLayer  <- scripts/starting_map.gd   [group: "map"]
+      Camera2D     <- scripts/world.gd
+
+starting_map._ready preloads hud.tscn and add_child(hud_instance) under the map
+node (HUD is a sibling of rendering in the tree but lives under the map node for
+ownership). Groups: map registration used by camera input and sleep button.
+
+
+--------------------------------------------------------------------------------
+3. AUTOLOADS (project.godot [autoload])
+--------------------------------------------------------------------------------
+
+SaveManager       scripts/save_manager.gd
+                  Serialize/deserialize farm; hotkeys in user://settings.json;
+                  pending_load_save_name for load-on-enter-world.
+
+FarmDataManager   scripts/farm_data_manager.gd
+                  Grid, turn, money, season, workers, energy, action_queue,
+                  blueprints, inventory, notes. Emits data_reset, energy_changed,
+                  turn_advanced, money_changed (some guarded).
+
+MetaManager       scripts/meta_manager.gd
+                  Karma, dev flag, unlocks → user://shadow_logic_meta.json
+
+RadioManager      scripts/radio_manager.gd
+                  Music / SFX; track_changed and beat hooks for UI/gameplay.
+
+GodotDocsLog      scripts/godot_docs_log.gd
+                  OS Logger → docs/godot_error_log_YYYY-MM-DD_HH-mm-ss.txt (max 10);
+                  index at docs/godot_error_log.txt.
+
+
+--------------------------------------------------------------------------------
+4. WORLD LAYER — MAP VS CAMERA
+--------------------------------------------------------------------------------
+
+starting_map.gd (large):
+  Procedural or loaded terrain, tool handling, plant stress, workers, overnight
+  flow, dialogue triggers, connections to NarrativeData / DataScenario, forecast
+  refresh into HUD nodes, save/load integration.
+
+world.gd (Camera2D):
+  Pan, zoom with smoothing, map bounds, optional cinematic / event queue playback;
+  emits events_finished when a queue completes.
+
+
+--------------------------------------------------------------------------------
+5. HUD LAYER — WHAT LIVES WHERE
+--------------------------------------------------------------------------------
+
+Root script: scripts/hud.gd on scenes/hud.tscn (extends Control).
+
+Scene-backed (hud.tscn): Bottom_Dashboard tool rows, menus, pickers, Almanac_Window,
+Pause_Overlay, Modal_Dimmer, SeedPicker, ProducePicker, etc.
+
+Runtime-built in hud.gd (because layout is code-driven or added after dashboard
+  rebuild):
+  - StatusStrip (PanelContainer) — season line, weather flavor text, active tool,
+    vitals (money / turn). Anchored PRESET_TOP_WIDE on CanvasLayer with explicit
+    offset_top/offset_bottom (CanvasLayer does not size children from min-size).
+  - InfoDock (PanelContainer) — tile hover + “Forecast / Events”. Path used by
+    starting_map: CanvasLayer/InfoDock. PRESET_TOP_RIGHT; MUST set offset_bottom
+    > offset_top or height collapses to zero. offset_top should clear StatusStrip
+    height (~96px + margin).
+
+Other runtime children on CanvasLayer from starting_map.gd: narrative popup UI,
+karma shop, occasional panels (e.g. death panel).
+
+HUD philosophy: emit signals (action_selected, save_requested, …); starting_map
+connects and mutates FarmDataManager / tools. Keeps UI mostly stateless apart
+from local widgets.
+
+
+--------------------------------------------------------------------------------
+6. DATA & CONTENT
+--------------------------------------------------------------------------------
+
+data/*.csv + data/data_*.gd loaders: plants, narrative, almanac entries from
+dictionaries, guilds, upgrades, additives, placeable objects.
+
+scripts/data_scenario.gd (class_name DataScenario): story_weather.csv and related
+scenario parsing; map calls _get_weather_for_day and forecast helpers.
+
+Narrative: data/dialogue.csv, lore.csv via data_narrative.gd / NarrativeData.
+
+
+--------------------------------------------------------------------------------
+7. PERSISTENCE (QUICK)
+--------------------------------------------------------------------------------
+
+user://<save>.json     — farm snapshot (SaveManager + map/FarmDataManager)
+user://settings.json   — settings / hotkeys
+user://shadow_logic_meta.json — MetaManager
+
+
+--------------------------------------------------------------------------------
+8. EXTENSION POINTS
+--------------------------------------------------------------------------------
+
+- New tool: starting_map.gd tool handling + HUD action menu label if needed.
+- New crop: data/plants*.csv + data_plants.gd loader if schema changes.
+- New global state: prefer FarmDataManager (per-save) or MetaManager (meta).
+- New overlay UI: usually CanvasLayer child in hud.tscn or instantiate from
+  starting_map onto hud_instance/CanvasLayer.
+
+
+--------------------------------------------------------------------------------
+9. REVISION LOG (append-only, newest at bottom)
+--------------------------------------------------------------------------------
+
+2026-05-07 — Initial architecture.txt: layers, scene flow, autoloads, map vs
+             camera, HUD StatusStrip + InfoDock CanvasLayer sizing notes,
+             data/persistence/extension points.
+2026-05-07 — Agent change log lives at docs/cursor-action-log.txt (moved from project root).
+2026-05-08 — Restored `project.godot` autoloads to explicit `res://scripts/*.gd` paths (no uid://), matching backup-safe singleton configuration.
+2026-05-08 — `project.godot`: forced boot sequence to main menu by setting `run/main_scene` to `res://scenes/main_menu.tscn` (avoid uid-based bypass).
+2026-05-23 — Machine move: re-added missing `[autoload]` block (FarmDataManager, MetaManager, SaveManager, RadioManager) and `[display]` in `project.godot` after editor stripped them.
+2026-05-23 — `GodotDocsLog` autoload: session logs in `docs/godot_error_logs/godot_error_log_YYYY-MM-DD_HH-mm-ss.txt` (max 10); index at `docs/godot_error_log.txt`.
+2026-06-04 — Opencore fork: restored `project.godot` `[autoload]` (incl. GodotDocsLog), `[debug]` call stacks, `[display]`; logs under `docs/godot_error_log_*.txt`.
+

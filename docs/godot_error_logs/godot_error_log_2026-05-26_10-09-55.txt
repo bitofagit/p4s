@@ -1,0 +1,14 @@
+--- session 2026-05-26T10:09:55 ---
+Godot 4.6.2-stable (official) | log: /Users/apple/Documents/P4S/P4S 9.5.26 nitrogen tea and fucking plants everywhere/docs/godot_error_logs/godot_error_log_2026-05-26_10-09-55.txt
+[10:09:55] [LOG] Successfully loaded 25 plants from plants_v3.csv (V3.3).
+────────────────────────────────────────
+[10:09:55] [WARNING] Resolution 2560×1440 exceeds monitor (2558×1439). Using safe fallback 1280×720.
+  at: core/variant/variant_utility.cpp:1034 @ push_warning()
+  code: Resolution 2560×1440 exceeds monitor (2558×1439). Using safe fallback 1280×720.
+  backtrace:
+    [GDScript stack]
+    GDScript backtrace (most recent call first):
+      [0] clamp_resolution_to_monitor (res://scripts/save_manager.gd:140)
+      [1] apply_display_settings (res://scripts/save_manager.gd:166)
+      [2] _ready (res://scripts/save_manager.gd:47)
+[10:09:55] [LOG] Embedded window can't be resized.

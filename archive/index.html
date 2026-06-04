@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Permaculture: Shadow Logic</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://unpkg.com/@tonejs/midi@2.0.28/build/Midi.js"></script>
+    <script src="plants.js" defer></script>
+    <script src="guilds.js" defer></script>
+    <script src="objects.js" defer></script>
+    <script src="additives.js" defer></script>
+    <script src="almanac.js" defer></script>
+    <script src="story.js" defer></script>
+    <script src="upgrades.js" defer></script>
+    <script src="renderer.js" defer></script>
+    <script src="ui.js" defer></script>
+    <script src="input.js" defer></script>
+    <script src="radio.js" defer></script>
+    <script src="engine.js" defer></script>
+</head>
+<body>
+    <div id="start-screen">
+        <h1 style="font-size: 3.5rem; margin-bottom: 5px; color: var(--chrome-accent); text-shadow: 0 0 15px rgba(174, 213, 129, 0.4);">SHADOW LOGIC</h1>
+        <p style="margin-bottom: 20px; color: #bcaaa4; font-style: italic;">You are the spirit of the old farmer. Bound to the soil by your karmic debt, you wait in the void.</p>
+
+        <div id="meta-stats" style="margin-bottom: 30px; color: #ab47bc; font-weight: bold; text-shadow: 0 0 10px rgba(171, 71, 188, 0.5);"></div>
+
+        <h3 style="color: #fff; margin-bottom: 15px;">Choose a Vessel to Possess</h3>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;">
+            <div class="upgrade-card" role="button" tabindex="0" onclick="startGame('arthur')" style="border-color: #66bb6a; cursor: pointer;">
+                <h4 style="color: #66bb6a;">Arthur (The Retiree)</h4>
+                <p>High starting funds (£100), but frail. Low Energy. The land is relatively quiet.</p>
+                <div style="margin-top: 10px; font-size: 0.8rem; color: #aaa;">Difficulty: Easy</div>
+            </div>
+
+            <div class="upgrade-card" role="button" tabindex="0" onclick="startGame('sarah')" style="border-color: #ffb74d; cursor: pointer;">
+                <h4 style="color: #ffb74d;">Sarah (The Botanist)</h4>
+                <p>Standard funds (£20). Starts with the Scythe unlocked. Balsam is aggressively spreading.</p>
+                <div style="margin-top: 10px; font-size: 0.8rem; color: #aaa;">Difficulty: Medium</div>
+            </div>
+
+            <div class="upgrade-card" role="button" tabindex="0" onclick="startGame('max')" style="border-color: #e53935; cursor: pointer;">
+                <h4 style="color: #e53935;">Max (The Developer)</h4>
+                <p>Massive wealth (£500), but the village hates him (Karma -50). Nature actively fights back.</p>
+                <div style="margin-top: 10px; font-size: 0.8rem; color: #aaa;">Difficulty: Hard</div>
+            </div>
+        </div>
+        <button type="button" id="btn-start-back" class="diff-btn" style="margin-top: 24px; font-size: 0.95rem; border-style: dashed;">← Back</button>
+    </div>
+    <div id="game-over-screen">
+        <div id="game-over-title">ECOLOGICAL COLLAPSE</div>
+        <div id="game-over-desc">The topsoil has blown away. The mycelial networks are dead. Your land is nothing but dust.</div>
+        <p id="game-over-upgrade-hint" style="display: none;">Choose a legacy blessing for your next homestead. It is saved in this browser.</p>
+        <div id="upgrade-container"></div>
+        <button type="button" id="btn-game-over-continue" class="btn-restart" style="display: none;">Continue</button>
+    </div>
+    <div id="event-overlay">
+        <div class="event-card">
+            <div class="event-character" id="event-char">🍄</div>
+            <div class="event-text" id="event-desc">"Event text goes here."</div>
+            <div class="event-choices">
+                <button type="button" class="btn-choice left" id="btn-event-left" onclick="resolveEvent('left')">Left Choice</button>
+                <button type="button" class="btn-choice right" id="btn-event-right" onclick="resolveEvent('right')">Right Choice</button>
+            </div>
+        </div>
+    </div>
+<div id="welcome-screen" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--chrome-bg-elevated, #2a2421); z-index: 10001; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; font-family: sans-serif;">
+    <h1 style="font-size: 3rem; margin-bottom: 10px; color: #aed581;">Permaculture Engine</h1>
+    <p style="color: #bcaaa4; margin-bottom: 40px;">Select your environment</p>
+    <div style="display: flex; gap: 20px;">
+        <button type="button" id="btn-mode-story" style="padding: 15px 30px; font-size: 1.2rem; background: #558b2f; color: #fff; border: none; border-radius: var(--chrome-radius, 8px); cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            Story Mode
+            <div style="font-size: 0.8rem; color: #c5e1a5; margin-top: 5px;">Begin the campaign</div>
+        </button>
+        <button type="button" id="btn-mode-dev" style="padding: 15px 30px; font-size: 1.2rem; background: #455a64; color: #fff; border: none; border-radius: var(--chrome-radius, 8px); cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            Developer Sandbox
+            <div style="font-size: 0.8rem; color: #b0bec5; margin-top: 5px;">All tools unlocked, infinite resources</div>
+        </button>
+    </div>
+</div>
+<div id="dialogue-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9000; display: none; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 50px; font-family: sans-serif;">
+    <div style="width: 80%; max-width: 800px; background: var(--chrome-bg-elevated, #302721); border: 2px solid var(--chrome-border, #8d6e63); border-radius: var(--chrome-radius, 14px); padding: 25px; box-shadow: var(--chrome-shadow, 0 14px 38px rgba(0,0,0,0.72)); color: #fff;">
+        <div id="dialogue-speaker" style="color: #aed581; font-weight: bold; font-size: 1.2rem; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Speaker Name</div>
+        <div id="dialogue-text" style="font-size: 1.2rem; line-height: 1.5; color: #e0e0e0; margin-bottom: 20px; min-height: 60px;">Dialogue text goes here...</div>
+        <div id="dialogue-choices" style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: flex-end;"></div>
+    </div>
+</div>
+<div id="dev-zoom-indicator" style="position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0, 20, 0, 0.85); color: #00ff00; padding: 6px 12px; font-family: monospace; font-size: 12px; font-weight: bold; border-radius: 6px; z-index: 9999; border: 1px solid #00ff00; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center; line-height: 1.4;">
+    ZOOM LEVEL: 1 / 2 | Scale: 200%
+</div>
+<div id="game-container">
+    <div id="canvas-container" style="position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 12px; overflow: hidden;">
+        <canvas id="world-canvas" style="position:absolute;top:0;left:0;z-index:1;"></canvas>
+        <canvas id="ui-canvas" style="position:absolute;top:0;left:0;z-index:2;pointer-events:none;"></canvas>
+    </div>
+    <div id="tooltip"></div>
+    <div id="global-tooltip"></div>
+</div>
+<div id="main-menu" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center; flex-direction: column; font-family: sans-serif;">
+    <div style="background: #263238; padding: 32px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 16px 48px rgba(0,0,0,0.8); width: 320px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 12px;">
+        <div id="menu-main-view" style="display: flex; flex-direction: column; gap: 12px;">
+            <h2 style="margin: 0 0 16px 0; text-align: center; color: #fff;">Game Paused</h2>
+            <button type="button" id="btn-resume" class="btn" style="padding: 12px; font-size: 16px;">Resume</button>
+            <button type="button" id="btn-open-controls" class="btn" style="padding: 12px; font-size: 16px;">Controls &amp; Hotkeys</button>
+            <div class="ui-panel-content" style="display: flex; flex-direction: column; gap: 12px;">
+                <button type="button" id="btn-open-display" class="btn" style="padding: 12px; font-size: 16px;">Display Settings</button>
+                <button type="button" id="btn-quit-main" class="btn" style="padding: 12px; font-size: 16px; background: #37474f; margin-top: 10px;">Quit to Main Menu</button>
+                <button type="button" onclick="breakTheCycle()" class="btn" style="padding: 12px; font-size: 16px; color: #ef5350; border-color: #c62828; margin-top: 5px;">☠️ Break the Cycle (Wipe Save)</button>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0;">
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="input-save-name" placeholder="Name your farm..." style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: #37474f; color: #fff; font-family: inherit;">
+                <button type="button" id="btn-save-new" class="btn" style="padding: 10px 16px;">Save</button>
+            </div>
+            <div id="save-list-container" style="max-height: 180px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; border: 1px inset rgba(255,255,255,0.05);"></div>
+        </div>
+
+        <div id="menu-controls-view" style="display: none; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 4px;">
+                <h2 style="margin: 0; color: #fff; font-size: 18px;">Controls</h2>
+                <button type="button" id="btn-back-menu" class="btn" style="padding: 6px 12px; background: #546e7a;">← Back</button>
+            </div>
+            <div id="hotkeys-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto; padding-right: 4px;"></div>
+        </div>
+        <div id="menu-display-view" style="display: none; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 4px;">
+                <h2 style="margin: 0; color: #fff; font-size: 18px;">Display</h2>
+                <button type="button" id="btn-back-menu-display" class="btn" style="padding: 6px 12px; background: #546e7a;">← Back</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <span style="color: #b0bec5; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold;">UI Scale</span>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="ui-scale-buttons">
+                    <button type="button" class="btn scale-btn" data-scale="auto" style="flex: 1;">Auto</button>
+                    <button type="button" class="btn scale-btn" data-scale="0.6" style="flex: 1;">60%</button>
+                    <button type="button" class="btn scale-btn" data-scale="0.8" style="flex: 1;">80%</button>
+                    <button type="button" class="btn scale-btn" data-scale="1" style="flex: 1;">100%</button>
+                    <button type="button" class="btn scale-btn" data-scale="1.2" style="flex: 1;">120%</button>
+                    <button type="button" class="btn scale-btn" data-scale="1.4" style="flex: 1;">140%</button>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                <span style="color: #b0bec5; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold;">Window</span>
+                <button type="button" id="btn-toggle-fullscreen" class="btn" style="padding: 10px;">Toggle Fullscreen</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="almanac-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2500; justify-content: center; align-items: center; font-family: sans-serif;">
+
+    <div style="background: #1e272e; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 16px 48px rgba(0,0,0,0.9); width: 800px; max-width: calc(100vw - 32px); height: 80vh; max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden;">
+
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <h2 style="margin: 0; color: #4caf50; font-size: 22px; letter-spacing: 0.5px;">Permaculture Almanac</h2>
+            <button type="button" id="btn-close-almanac" class="btn" style="padding: 6px 16px; background: #d32f2f; font-weight: bold;">✕ Close</button>
+        </div>
+
+        <div style="display: flex; flex: 1; overflow: hidden; min-height: 0;">
+
+            <div style="width: 280px; min-width: 200px; background: rgba(0,0,0,0.15); border-right: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column;">
+                <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <input type="text" id="almanac-search" placeholder="Search topics, tags..." autocomplete="off" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: #37474f; color: #fff; font-family: inherit; box-sizing: border-box; outline: none;">
+                </div>
+                <div id="almanac-list" class="alm-scroll" style="flex: 1; overflow-y: auto; min-height: 0;"></div>
+            </div>
+
+            <div id="almanac-content" class="alm-scroll alm-content-block" style="flex: 1; padding: 32px; overflow-y: auto; min-height: 0; background: #263238;"></div>
+
+        </div>
+    </div>
+</div>
+<div id="sidebar">
+    <div id="sidebar-vitals" class="ui-panel">
+        <h2 class="ui-panel-title">Resources</h2>
+        <div class="vitals-row">
+            <span class="vitals-label vitals-label--energy" id="energy-label-left">Energy</span>
+            <div class="vitals-track vitals-track-energy"><div id="energy-fill" class="vitals-fill"></div></div>
+        </div>
+        <div class="vitals-row">
+            <span class="vitals-label vitals-label--money" id="money-label-right">Funds</span>
+            <div class="vitals-track vitals-track-money"><div id="money-fill" class="vitals-fill"></div></div>
+        </div>
+        <div class="vitals-row">
+            <span class="vitals-label vitals-label--vitality" id="vitality-label">🌱 Vitality</span>
+            <div class="vitals-track vitals-track-vitality"><div id="vitality-fill" class="vitals-fill"></div></div>
+        </div>
+        <div class="vitals-row vitals-row--karma">
+            <span class="vitals-label vitals-label--karma" id="karma-label" style="display: flex; justify-content: space-between; width: 100%;">
+                <span>👿</span><span>Karma 0</span><span>😇</span>
+            </span>
+            <div class="vitals-track vitals-track-karma">
+                <div class="karma-centre-line"></div>
+                <div id="karma-fill" class="vitals-fill"></div>
+            </div>
+        </div>
+    </div>
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Farm status</h2>
+        <div class="stats">
+            <div class="stat-block cap">
+                <span class="stat-label">Capacity</span>
+                <span class="stat-value">&pound;<span id="cap">100</span></span>
+            </div>
+            <div class="stat-block" style="grid-column: 1 / -1;">
+                <span class="stat-label">Calendar</span>
+                <div id="calendar-display" style="font-weight: bold; color: #fff; background: rgba(0,0,0,0.4); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--chrome-border-soft);">
+                    🌸 Spring - Day 1, Year 1
+                </div>
+            </div>
+        </div>
+        <div id="forecast">
+            <div id="forecast-header"><span>Weather outlook</span><span>Next 3 days</span></div>
+            <div id="forecast-list"></div>
+        </div>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Map view</h2>
+        <div class="ui-btn-grid">
+            <button type="button" id="zi">Zoom in</button>
+            <button type="button" id="zo">Zoom out</button>
+        </div>
+        <p class="ui-panel-hint">Lens modes are on the bar below the map (keys 1–6).</p>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Field work</h2>
+        <p class="ui-panel-hint" style="margin:0 0 10px 0;">Place seeds, soil amendments, and structures on the grid.</p>
+        <div class="ui-btn-grid">
+            <button type="button" id="btn-seed-toolbox">Seed toolbox (S)</button>
+            <button type="button" id="btn-additive-toolbox">Additives (A)</button>
+            <button type="button" id="btn-infra-toolbox" class="span-cols">Infrastructure (I)</button>
+        </div>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Reference</h2>
+        <div class="ui-btn-grid">
+            <button type="button" id="btn-plant-codex">Plant codex (P)</button>
+            <button type="button" id="btn-almanac">Almanac (H)</button>
+            <button type="button" id="btn-calendar" class="span-cols">Planting Calendar (Y)</button>
+        </div>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Livestock</h2>
+        <div id="livestock-panel" class="livestock-panel">
+            <div class="livestock-row">
+                <span>🦆 Ducks: <span id="duck-count" style="font-weight: 700; color: #fff;">0</span></span>
+                <button type="button" id="btn-sell-duck">Sell (£15)</button>
+            </div>
+            <div class="livestock-row">
+                <span>🐖 Pigs: <span id="pig-count" style="font-weight: 700; color: #fff;">0</span></span>
+                <button type="button" id="btn-sell-pig">Sell (£40)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Actions</h2>
+        <div id="pending-queue" style="margin-bottom: 10px; font-size: 11px; line-height: 1.4; color: #a5d6a7; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <span style="color:#90a4ae; font-style:italic;">No actions queued.</span>
+        </div>
+        <button type="button" id="btn-undo" disabled style="width: 100%;">Undo last change</button>
+    </div>
+
+    <div class="ui-panel">
+        <h2 class="ui-panel-title">Guidance &amp; log</h2>
+        <div class="info tip" id="msg">Shadows now cast North (Uphill). Lettuce requires this shade to survive.</div>
+        <div class="info log" id="summary">Summary will appear here after each turn.</div>
+    </div>
+</div>
+<div id="inventory-hud" style="position: fixed; left: 20px; top: 50%; transform: translateY(-50%); background: var(--chrome-bg-elevated); border: 1px solid var(--chrome-border); padding: 15px; border-radius: 8px; width: 220px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 100; pointer-events: auto;">
+    <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 1rem; color: #ffb74d; border-bottom: 1px solid var(--chrome-border-soft); padding-bottom: 5px;">🎒 Inventory</h3>
+    <div id="inventory-list" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; color: #e0e0e0;"></div>
+</div>
+<div id="bottom-bar">
+    <div id="bottom-left" style="align-items: stretch;">
+        <div style="display: flex; flex-direction: column; gap: 6px; width: 230px;">
+            <div id="info-readout" style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.2); padding:4px 8px; border-radius:8px; border:1px solid var(--chrome-border-soft); overflow:hidden;">
+                <div id="info-icon" style="flex:0 0 28px; height:28px; border-radius:6px; background:rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:center; font-size:14px; border:1px solid rgba(255,255,255,0.1);">🖱️</div>
+                <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+                    <div id="info-title" style="font-weight:bold; font-size:11px; color:#ffe082; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Inspect Mode</div>
+                    <div id="info-desc" style="font-size:10px; color:#cfd8dc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Click a tile</div>
+                </div>
+            </div>
+            <button type="button" id="btn-inspect-action" class="btn" style="width: 100%; justify-content: center; padding: 6px;">🔍 Inspect</button>
+            <button type="button" id="btn-deselect-action" class="btn" style="width: 100%; justify-content: center; padding: 6px; display: none; background: rgba(211, 47, 47, 0.8); border-color: #ef5350;">❌ Deselect (Q)</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; justify-content: space-between;">
+            <div id="lens-container" style="position: relative; width: 140px;">
+                <button type="button" id="btn-lens-menu" class="btn" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; height: 40px;">
+                    <span id="lens-menu-label">Lens: Default</span>
+                    <span style="font-size: 10px;">▴</span>
+                </button>
+                <div id="lens-dropdown" class="chrome-popover" style="display: none; position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; padding: 6px; flex-direction: column; gap: 4px; z-index: 1000; width: 100%;">
+                    <button type="button" id="btn-lens-default" class="l btn active" data-l="default" style="width: 100%; text-align: left; justify-content: flex-start;">Default</button>
+                    <button type="button" id="btn-lens-water" class="l btn" data-l="hydro" style="width: 100%; text-align: left; justify-content: flex-start;">Water</button>
+                    <button type="button" id="btn-lens-solar" class="l btn" data-l="solar" style="width: 100%; text-align: left; justify-content: flex-start;">Solar</button>
+                    <button type="button" id="btn-lens-soil" class="l btn" data-l="soil" style="width: 100%; text-align: left; justify-content: flex-start;">Soil</button>
+                    <button type="button" id="btn-lens-zones" class="l btn" data-l="zones" style="width: 100%; text-align: left; justify-content: flex-start;">Zones</button>
+                    <button type="button" id="btn-lens-health" class="l btn" data-l="health" style="width: 100%; text-align: left; justify-content: flex-start;">Health</button>
+                </div>
+            </div>
+            <button type="button" id="btn-data-modal" class="btn" style="width: 100%; padding: 6px 12px; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px;" title="Farm Data & History">
+                📊 <span style="font-size: 11px;">Data Dashboard</span>
+            </button>
+            <button type="button" id="btn-toggle-radio" style="padding: 10px; background: #5d4037; color: #fff; border: 1px solid var(--chrome-border); border-radius: var(--chrome-radius-sm); cursor: pointer; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center;">
+                📻 <span style="font-size: 0.9rem;">Radio</span>
+            </button>
+        </div>
+    </div>
+    <div id="bottom-center" class="btn-group">
+        <div class="tool-tabs">
+            <div class="tool-tab-strip" role="tablist" aria-label="Tool categories">
+                <button type="button" class="tool-tab active" role="tab" data-tool-tab="till" aria-selected="true" id="tool-tab-till">Till</button>
+                <button type="button" class="tool-tab" role="tab" data-tool-tab="earthworks" aria-selected="false" id="tool-tab-earthworks">Earthworks</button>
+                <button type="button" class="tool-tab" role="tab" data-tool-tab="build" aria-selected="false" id="tool-tab-build">Build</button>
+            </div>
+            <div class="tool-tab-panels">
+                <div class="tool-tab-panel active" role="tabpanel" data-tool-tab-panel="till" aria-labelledby="tool-tab-till">
+                    <button type="button" class="t" data-t="cultivate" style="height: 100%;">Cultivate</button>
+                    <button type="button" class="t" data-t="bulldoze" style="height: 100%;">Clear</button>
+                </div>
+                <div class="tool-tab-panel" role="tabpanel" data-tool-tab-panel="earthworks" aria-labelledby="tool-tab-earthworks">
+                    <div id="earthworks-container" style="position: relative; height: 100%;">
+                        <button type="button" id="btn-earthworks-menu" class="btn" style="min-width: 140px; height: 100%; display: flex; justify-content: space-between; align-items: center;">
+                            <span id="earthworks-menu-label">Earthworks</span>
+                            <span style="font-size: 10px;">▴</span>
+                        </button>
+                        <div id="earthworks-dropdown" class="chrome-popover" style="display: none; position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; padding: 6px; flex-direction: column; gap: 4px; z-index: 1000; min-width: 140px;">
+                            <button type="button" class="t btn" data-t="swale" style="width: 100%; text-align: left; justify-content: flex-start;">Swale</button>
+                            <button type="button" class="t btn" data-t="gabion" style="width: 100%; text-align: left; justify-content: flex-start;">Gabion</button>
+                            <button type="button" class="t btn" data-t="wall" style="width: 100%; text-align: left; justify-content: flex-start;">Wall</button>
+                            <button type="button" class="t btn" data-t="french_drain" style="width: 100%; text-align: left; justify-content: flex-start;">French Drain</button>
+                            <button type="button" class="t btn" data-t="pipe" style="width: 100%; text-align: left; justify-content: flex-start;">Pipe</button>
+                            <button type="button" class="t btn" data-t="soaker_hose" style="width: 100%; text-align: left; justify-content: flex-start;">Soaker Hose</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="tool-tab-panel" role="tabpanel" data-tool-tab-panel="build" aria-labelledby="tool-tab-build">
+                    <button type="button" class="t btn" data-t="scythe" style="display: none; height: 100%;">🔪 Scythe</button>
+                    <button type="button" class="t btn" data-t="uproot" style="display: none; height: 100%;">🧤 Uproot</button>
+                    <button type="button" class="t btn" data-t="polytunnel" style="display: none; height: 100%;">⛺ Polytunnel</button>
+                    <button type="button" class="t btn" data-t="greenhouse" style="display: none; height: 100%;">🏠 Greenhouse</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="bottom-right">
+        <button type="button" id="next" onclick="sleep()" style="background: #1565c0; border: 1px solid #1976d2; color: #fff; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            🌙 Sleep (End Day)
+        </button>
+    </div>
+</div>
+<div id="resize-map-sidebar-edge" class="map-chrome-resize map-chrome-resize--ew" title="Drag to resize sidebar" role="separator" aria-orientation="vertical" aria-label="Resize sidebar width"></div>
+<div id="resize-map-bottom-edge" class="map-chrome-resize map-chrome-resize--ns" title="Drag to resize bottom bar" role="separator" aria-orientation="horizontal" aria-label="Resize bottom bar height"></div>
+<!-- Seed Toolbox Modal -->
+<div id="seed-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title">Seed Toolbox</span>
+            <button class="modal-close" data-close-seed>&times;</button>
+        </div>
+        <div id="seed-modal-body">
+            <div class="seed-tabs">
+                <button class="seed-tab active" data-layer="canopy">Canopy</button>
+                <button class="seed-tab" data-layer="understory">Understory</button>
+                <button class="seed-tab" data-layer="ground">Ground</button>
+            </div>
+            <input type="text" id="seed-search" placeholder="Search seeds or roles...">
+            <div id="seed-list"></div>
+        </div>
+    </div>
+</div>
+<!-- Cell Inspector Modal -->
+<div id="inspect-modal" class="modal-overlay">
+    <div class="modal" style="width: 760px; max-width: 95vw;">
+        <div class="modal-header">
+            <span class="modal-title">Cell Inspector</span>
+            <button type="button" class="modal-close" data-close-inspect>&times;</button>
+        </div>
+        <div id="inspect-modal-body" style="display: flex; gap: 16px; padding: 16px; background: #1a2024; max-height: 80vh; overflow-y: auto;">
+            <div style="flex: 0 0 220px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; text-align: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);">
+                    <canvas id="inspect-canvas" width="160" height="160" style="image-rendering: pixelated; width: 160px; height: 160px; background: #f4f1ea; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.6);"></canvas>
+                    <div id="inspect-coords" style="margin-top: 12px; font-weight: 900; color: #eceff1; font-size: 16px; letter-spacing: 0.1em;">[0, 0]</div>
+                    <div id="inspect-land-type" style="color: #90a4ae; font-size: 11px; text-transform: uppercase; margin-top: 4px;">Wild Meadow</div>
+                </div>
+                <div id="inspect-env" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.6; color: #cfd8dc;">
+                </div>
+            </div>
+            <div id="inspect-plants" style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Farm Data Dashboard Modal -->
+<div id="data-modal" class="modal-overlay">
+    <div class="modal" style="width: 840px; max-width: 95vw;">
+        <div class="modal-header">
+            <span class="modal-title">Farm Analytics & History</span>
+            <button type="button" class="modal-close" data-close-data>&times;</button>
+        </div>
+        <div id="data-modal-body" style="padding: 16px; background: #1a2024; display: flex; justify-content: center;">
+            <canvas id="data-canvas" width="800" height="460" style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); box-shadow: inset 0 4px 12px rgba(0,0,0,0.5);"></canvas>
+        </div>
+    </div>
+</div>
+<!-- Plant Codex Modal -->
+<div id="codex-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title">Plant Codex</span>
+            <button class="modal-close" data-close-codex>&times;</button>
+        </div>
+        <div id="codex-modal-body">
+            <div id="codex-list">
+                <input type="text" id="codex-search" placeholder="Search plants or roles...">
+                <div id="codex-list-items"></div>
+            </div>
+            <div id="codex-detail">
+                <div id="codex-empty">Select a plant on the left to see details.</div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Planting Calendar Modal -->
+<div id="calendar-modal" class="modal-overlay">
+    <div class="modal" style="width: 680px; max-width: 95vw;">
+        <div class="modal-header">
+            <span class="modal-title">Seasonal Planting Calendar</span>
+            <button type="button" class="modal-close" data-close-calendar>&times;</button>
+        </div>
+        <div id="calendar-modal-body" style="padding: 16px; max-height: 70vh; overflow-y: auto; background: #1a2024;">
+            <div style="display: flex; gap: 16px; margin-bottom: 16px; font-size: 11px; font-weight: bold;">
+                <div style="display: flex; align-items: center; gap: 6px;"><div style="width:12px; height:12px; background:#4caf50; border-radius:2px;"></div> Optimal Sowing</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><div style="width:12px; height:12px; background:#ff9800; border-radius:2px;"></div> Harvest Season</div>
+                <div style="display: flex; align-items: center; gap: 6px;"><div style="width:12px; height:12px; background:#9c27b0; border-radius:2px;"></div> Perennial (Plant Anytime)</div>
+            </div>
+
+            <div id="calendar-marker-root" style="position: relative;">
+                <div id="calendar-header-row" style="display: grid; grid-template-columns: 120px 1fr 1fr 1fr 1fr 0.5fr; gap: 4px; margin-bottom: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #b0bec5; text-align: center; font-weight: 800;">
+                    <div style="text-align: left; padding-left: 8px;">Crop</div>
+                    <div style="background: rgba(129, 199, 132, 0.1); padding: 6px 0; border-bottom: 2px solid #81c784;">Spring</div>
+                    <div style="background: rgba(255, 183, 77, 0.1); padding: 6px 0; border-bottom: 2px solid #ffb74d;">Summer</div>
+                    <div style="background: rgba(255, 138, 101, 0.1); padding: 6px 0; border-bottom: 2px solid #ff8a65;">Autumn</div>
+                    <div style="background: rgba(129, 212, 250, 0.1); padding: 6px 0; border-bottom: 2px solid #81d4fa;">Winter</div>
+                    <div style="background: rgba(239, 83, 80, 0.1); padding: 6px 0; border-bottom: 2px solid #ef5350;">Chaos</div>
+                </div>
+
+                <div id="calendar-grid-rows" style="display: flex; flex-direction: column; gap: 6px;"></div>
+
+                <div id="calendar-week-marker" aria-hidden="true" style="display: none; position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; z-index: 6; pointer-events: none; background: linear-gradient(180deg, #fffde7 0%, #ffeb3b 35%, #ffc107 100%); box-shadow: 0 0 10px rgba(255, 235, 59, 0.85), 0 0 2px rgba(0,0,0,0.8); border-radius: 2px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Infrastructure Toolbox Modal -->
+<div id="infra-modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title">Objects &amp; Infrastructure</span>
+            <button class="modal-close" data-close-infra>&times;</button>
+        </div>
+        <div id="infra-modal-body" style="padding:8px 10px 10px; max-height:70vh; overflow-y:auto;">
+            <div id="infra-list"></div>
+        </div>
+    </div>
+</div>
+<div id="additive-modal" class="modal-overlay">
+    <div class="modal" style="width: 360px; max-width: 90vw;">
+        <div class="modal-header">
+            <span class="modal-title">Soil Additives</span>
+            <button class="modal-close" data-close-additive>&times;</button>
+        </div>
+        <div id="additive-modal-body" style="padding:8px 10px 10px; max-height:70vh; overflow-y:auto;">
+            <div id="additive-list" style="display: grid; grid-template-columns: 1fr; gap: 6px;"></div>
+        </div>
+    </div>
+</div>
+<div id="radio-player" style="position: fixed; bottom: 80px; right: 20px; width: 280px; background: var(--chrome-bg-elevated); border: 2px solid var(--chrome-border); border-radius: var(--chrome-radius); padding: 15px; box-shadow: var(--chrome-shadow); color: #fff; display: none; flex-direction: column; gap: 10px; z-index: 1000; font-family: sans-serif;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--chrome-border-soft); padding-bottom: 5px;">
+        <strong style="color: #ffcc80;">Farm Frequency FM</strong>
+        <button type="button" id="btn-close-radio" style="background: none; border: none; color: #aaa; cursor: pointer;">✖</button>
+    </div>
+    <div style="text-align: center; margin: 10px 0;">
+        <div id="radio-status" style="font-size: 0.8rem; color: #bcaaa4; text-transform: uppercase;">Power Off</div>
+        <div id="radio-track-name" style="font-size: 1.1rem; color: #aed581; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">---</div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
+        <button type="button" id="btn-radio-prev" style="background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer;">⏮</button>
+        <button type="button" id="btn-radio-play" style="background: #ef6c00; border: none; border-radius: 50%; width: 40px; height: 40px; color: #fff; font-size: 1.2rem; cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">▶</button>
+        <button type="button" id="btn-radio-next" style="background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer;">⏭</button>
+    </div>
+        <!-- Station IDs: classical, lofi, radio6 (wildcard / “Radio 6”; use radio6 everywhere, not custom). -->
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <button type="button" class="btn-station" data-station="classical" style="flex: 1; padding: 5px; background: #4e342e; border: 1px solid #795548; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Classical</button>
+            <button type="button" class="btn-station" data-station="lofi" style="flex: 1; padding: 5px; background: #37474f; border: 1px solid #546e7a; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Lo-Fi</button>
+            <button type="button" class="btn-station" data-station="radio6" style="flex: 1; padding: 5px; background: #2e7d32; border: 1px solid #43a047; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Radio 6</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; border-top: 1px solid var(--chrome-border-soft); padding-top: 10px;">
+            <span style="font-size: 0.8rem;">🔈</span>
+            <input type="range" id="radio-volume" min="0" max="100" value="50" style="flex: 1; accent-color: #aed581; cursor: pointer;">
+            <span style="font-size: 0.8rem;">🔊</span>
+        </div>
+</div>
+</body>
+</html>

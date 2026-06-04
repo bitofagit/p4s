@@ -1,0 +1,17 @@
+---
+description: Append a brief line to docs/cursor-action-log.txt after substantive project changes
+alwaysApply: true
+---
+
+# Action log
+
+When you finish work that **meaningfully changes** this project (code, scenes, resources, config, new/deleted files), **append** one short entry to **`docs/cursor-action-log.txt`** (project docs folder, beside `CODEBASE_GUIDE.md`).
+
+- **Append only** — never delete or rewrite earlier lines; newest entry at the **bottom**.
+- **One line** (or two if needed): start with `YYYY-MM-DD —`, then what changed and which files/areas.
+- Skip logging for **trivial** edits only (e.g. typo in a comment with no behavior change).
+- If the user asked you **not** to log a specific change, skip that once.
+
+Example:
+
+`2025-03-23 — hud.tscn: wired sleep button to new signal.`
