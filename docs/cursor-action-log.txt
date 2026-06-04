@@ -724,3 +724,4 @@ Cursor action log — one line per substantive change (newest at bottom). Append
 2026-06-04 — Open-core: `opencore_dialogue.csv` / `opencore_weather.csv`; `data_scenario.gd` single `tutorial` campaign; `farm_data_manager` + `ui_campaign_select` + narrative path wiring.
 2026-06-04 — `ui_map_editor.gd`: strict brush/farmhouse tool gating, drag bounds checks, UI hints instead of farmhouse `push_warning` spam.
 2026-06-04 — Permaculture 101: `opencore_weather.csv` / `opencore_dialogue.csv` 10-day curriculum; tutorial narrative match + forecast flash (`hud.gd`).
+2026-06-04 — `.gitignore` open-core shields (premium CSVs, campaigns/, assets/premium/, obsidian/); initial commit on `main`.
