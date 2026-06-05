@@ -32,8 +32,9 @@ campaigns/oakhaven_defence/
 # Block premium visual and audio assets
 assets/premium/
 
-# Internal design notes (includes premium story archive)
-obsidian/
+# Premium ghost story design archive (root or nested under obsidian/)
+obsidian/11_Premium_Ghost_Story_Archive.md
+obsidian/**/11_Premium_Ghost_Story_Archive.md
 
 # ==========================================
 # 3. OS & SYSTEM FILES
