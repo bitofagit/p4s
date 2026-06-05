@@ -1,8 +1,16 @@
-# Godot 4+ specific ignores
+# ==========================================
+# 1. GODOT 4 ENGINE DEFAULTS
+# ==========================================
 .godot/
+*.translation
+*.gdignore
+export_presets.cfg
 /android/
 
-# Open-core shields — premium narrative & campaign packs (do not publish)
+# ==========================================
+# 2. OPEN-CORE SHIELDS (PREMIUM IP)
+# ==========================================
+# Strictly block all premium narrative and scripted events
 data/dialogue.csv
 data/dialogue.csv.import
 data/dialogue.*.translation
@@ -11,8 +19,25 @@ data/story_weather.csv.import
 data/story_weather.*.translation
 data/lore.csv
 data/lore.csv.import
+data/lore.*.translation
+
+# Block all proprietary premium campaigns
 campaigns/
+campaigns/wormfood/
+campaigns/automata/
+campaigns/desert/
+campaigns/heritage_garden/
+campaigns/oakhaven_defence/
+
+# Block premium visual and audio assets
 assets/premium/
 
 # Internal design notes (includes premium story archive)
 obsidian/
+
+# ==========================================
+# 3. OS & SYSTEM FILES
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
