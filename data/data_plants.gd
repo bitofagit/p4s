@@ -28,6 +28,8 @@ static func _field_defaults() -> Dictionary:
 		"custom_sprite_path": "",
 		"layer": "ground",
 		"mature_turn": 1,
+		"days_to_mature": 10,
+		"days_to_senescence": 15,
 		"lifecycle": "annual",
 		"yield_val": -1,
 		"energy_yield": -1,
@@ -269,6 +271,14 @@ static func _load_plants_from_csv(csv_path: String = PLANTS_CSV_PATH) -> void:
 			row["pollination_bonus"] = maxi(0, int(row.get("pollination_bonus", 1)))
 		if not row.has("flowering_seasons") or row["flowering_seasons"] == null:
 			row["flowering_seasons"] = []
+		var mature_days := int(row.get("days_to_mature", -1))
+		if mature_days < 1:
+			mature_days = maxi(1, int(row.get("mature_turn", 10)))
+		row["days_to_mature"] = mature_days
+		var senesce_days := int(row.get("days_to_senescence", -1))
+		if senesce_days <= mature_days:
+			senesce_days = maxi(mature_days + 1, 15)
+		row["days_to_senescence"] = senesce_days
 		DATA[sid] = row
 	print("Successfully loaded ", DATA.size(), " plants from ", csv_path.get_file(), " (V3.3).")
 

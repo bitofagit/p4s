@@ -42,6 +42,11 @@ var is_dragging: bool = false
 var drag_start_mouse: Vector2
 var drag_start_cam: Vector2
 
+## Screen shake state — see apply_screen_shake(); decays each frame in _process.
+var _shake_intensity: float = 0.0
+var _shake_duration: float = 0.0
+var _shake_time_left: float = 0.0
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -161,6 +166,7 @@ func _apply_zoom_reanchor(old_zoom: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_process_screen_shake(delta)
 	if is_playing_events:
 		return
 
@@ -264,10 +270,32 @@ func _play_next_event(events: Array) -> void:
 	tween.tween_callback(func(): _play_next_event(events))
 
 
+## Public API: randomised, decaying camera shake. Stronger requests override weaker in-flight ones.
+func apply_screen_shake(intensity: float, duration: float = 0.3) -> void:
+	var current_strength := 0.0
+	if _shake_duration > 0.0:
+		current_strength = _shake_intensity * (_shake_time_left / _shake_duration)
+	if intensity < current_strength:
+		return
+	_shake_intensity = intensity
+	_shake_duration = maxf(duration, 0.01)
+	_shake_time_left = _shake_duration
+
+
+func _process_screen_shake(delta: float) -> void:
+	if _shake_time_left <= 0.0:
+		return
+	_shake_time_left = maxf(_shake_time_left - delta, 0.0)
+	var decay := _shake_time_left / _shake_duration
+	var strength := _shake_intensity * decay * decay
+	if _shake_time_left <= 0.0 or strength < 0.1:
+		offset = Vector2.ZERO
+		_shake_intensity = 0.0
+		_shake_duration = 0.0
+		_shake_time_left = 0.0
+		return
+	offset = Vector2(randf_range(-strength, strength), randf_range(-strength, strength))
+
+
 func _screen_shake(intensity: float, duration: float) -> void:
-	var shake_tween = create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	var steps = int(duration / 0.05)
-	for i in range(steps):
-		var shake_offset := Vector2(randf_range(-intensity, intensity), randf_range(-intensity, intensity))
-		shake_tween.tween_property(self, "offset", shake_offset, 0.05)
-	shake_tween.tween_property(self, "offset", Vector2.ZERO, 0.05)
+	apply_screen_shake(intensity, duration)

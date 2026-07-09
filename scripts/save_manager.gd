@@ -27,6 +27,9 @@ const RESOLUTION_PRESETS: Array[Vector2i] = [
 ## If set, `starting_map` will call `load_game(self, pending_load_save_name)` once the map exists.
 var pending_load_save_name: String = ""
 
+## True after gameplay changes until the player saves or loads a slot.
+var session_has_unsaved_progress: bool = false
+
 var hotkeys: Dictionary = {
 	"Rotovator": KEY_C,
 	"Scythe": KEY_X,
@@ -249,7 +252,20 @@ func save_game(_map_node: Node, save_name: String) -> void:
 		return
 	file.store_string(JSON.stringify(save_dict))
 	file.close()
+	mark_session_saved()
 	print("Saved to: ", path)
+
+
+func mark_session_dirty() -> void:
+	session_has_unsaved_progress = true
+
+
+func mark_session_saved() -> void:
+	session_has_unsaved_progress = false
+
+
+func has_unsaved_progress() -> bool:
+	return session_has_unsaved_progress
 
 
 func load_game(map_node: Node, save_name: String) -> void:
@@ -277,6 +293,7 @@ func load_game(map_node: Node, save_name: String) -> void:
 
 	var d: Dictionary = data
 	FarmDataManager.current_turn = int(d.get("turn", 1))
+	FarmDataManager.sync_calendar_state()
 	FarmDataManager.current_money = int(d.get("money", 0))
 	FarmDataManager.difficulty = str(d.get("difficulty", "Normal"))
 	FarmDataManager.grid_data = _deserialize_grid(d.get("grid", []))
@@ -325,6 +342,7 @@ func load_game(map_node: Node, save_name: String) -> void:
 
 	map_node.turn_stepped.emit(FarmDataManager.current_turn, FarmDataManager.get_energy(), FarmDataManager.current_money)
 	map_node._refresh_all_visuals()
+	mark_session_saved()
 	print("Loaded: ", path)
 
 
@@ -364,10 +382,10 @@ func _serialize_grid(grid: Array) -> Array:
 	return out
 
 
-func _deserialize_grid(raw: Variant) -> Array:
+func _deserialize_grid(raw: Variant) -> Array[Array]:
 	if typeof(raw) != TYPE_ARRAY:
 		return []
-	var out: Array = []
+	var out: Array[Array] = []
 	for col_raw in raw:
 		if typeof(col_raw) != TYPE_ARRAY:
 			continue

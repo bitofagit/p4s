@@ -11,6 +11,7 @@ var audio_panel: Control
 var creative_panel: Control
 var campaign_panel: Control
 var _asset_hub: Control
+var _mute_btn: CheckButton
 
 ## Autoload singletons (resolved via /root/ so the parser always sees a declared identifier).
 @onready var _farm_data_manager: Node = get_node("/root/FarmDataManager")
@@ -167,19 +168,36 @@ func _ready() -> void:
 	_asset_hub.close_requested.connect(_close_asset_hub)
 
 	# --- Mute Toggle ---
-	var mute_btn := CheckButton.new()
-	mute_btn.text = "Mute Audio"
-	mute_btn.position = Vector2(20, 20)
-	mute_btn.focus_mode = Control.FOCUS_NONE
+	_mute_btn = CheckButton.new()
+	_mute_btn.text = "Mute Audio"
+	_mute_btn.position = Vector2(20, 20)
+	_mute_btn.focus_mode = Control.FOCUS_NONE
 	var master_bus := AudioServer.get_bus_index("Master")
 	if master_bus >= 0:
-		mute_btn.button_pressed = AudioServer.is_bus_mute(master_bus)
-		mute_btn.toggled.connect(func(is_muted: bool):
+		_mute_btn.button_pressed = AudioServer.is_bus_mute(master_bus)
+		_mute_btn.toggled.connect(func(is_muted: bool):
 			AudioServer.set_bus_mute(master_bus, is_muted)
 		)
 	else:
-		mute_btn.disabled = true
-	add_child(mute_btn)
+		_mute_btn.disabled = true
+	add_child(_mute_btn)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _mute_btn == null or _mute_btn.disabled:
+		return
+	if not event is InputEventKey:
+		return
+	var key_ev := event as InputEventKey
+	if not key_ev.pressed or key_ev.echo:
+		return
+	if key_ev.keycode != KEY_M and key_ev.physical_keycode != KEY_M:
+		return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus is LineEdit or focus is TextEdit:
+		return
+	_mute_btn.button_pressed = not _mute_btn.button_pressed
+	get_viewport().set_input_as_handled()
 
 
 func _launch_game(is_dev: bool) -> void:

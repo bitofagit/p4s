@@ -1,0 +1,236 @@
+================================================================================
+P4S — NANOALPHA BATCH BACKGROUND REMOVAL (GEMINI BRIEF)
+================================================================================
+Generated: 2026-07-09
+Purpose: Explain how we strip white/coloured backgrounds from plant sprites using
+the open-source NanoAlpha browser tool, plus our Playwright batch wrapper.
+
+Paste this into a Gemini chat when discussing new flora art, sprite prep, atlas
+rebakes, or transparent PNG workflows for this repo.
+
+Related docs:
+  - docs/GEMINI_GAME_DESIGN_BRIEF.txt
+  - docs/SPRITE_RENDERING_AND_PERFORMANCE.txt
+  - scripts/tools/flora_atlas_baker.gd
+  - scripts/plant_growth.gd
+
+
+================================================================================
+1. THE PROBLEM
+================================================================================
+
+Many P4S plant sprites come from PixelLab / AI image tools. They arrive as
+200×200 PNGs with opaque white or flat-coloured backgrounds. The game renders
+plants as layered flora (ground / understory / canopy) over terrain tiles. Opaque
+backgrounds show as ugly boxes and break compositing in the flora atlas baker.
+
+We need real RGBA transparency without hand-editing hundreds of files.
+
+
+================================================================================
+2. THE TOOL — NANOALPHA (OPEN SOURCE)
+================================================================================
+
+**NanoAlpha** is a static browser app by Collider Interactive Studio for
+extracting transparent PNG sprites from AI-generated images. All processing runs
+locally in the browser — no uploads, no cloud API.
+
+  Live demo:  https://nanoalpha.collider.hr/
+  License:    MIT
+  Author:     Collider Interactive Studio
+
+How it works (single image mode):
+  1. Samples the image border to detect the dominant background colour
+  2. Flood-fills background-like pixels from the edges (OKLab colour distance)
+  3. Estimates alpha on edge bands and decontaminates fringe halos
+  4. Exports a clean RGBA PNG
+
+The UI has **Auto** background detection, edge cleanup sliders, and optional
+manual alpha brush/eraser. For batch work we use the default **Auto** path only.
+
+**Important:** Do not double-click `index.html` in Finder. Browsers block canvas
+reads on `file://` URLs, so the processed result stays blank. Always serve the
+folder over HTTP.
+
+
+================================================================================
+3. LOCAL SETUP (ONE-TIME)
+================================================================================
+
+The project was set up with a GitHub zip extracted to:
+
+  ~/Downloads/NanoAlpha-main/
+
+Install batch dependencies (Playwright + glob) inside that folder:
+
+  cd ~/Downloads/NanoAlpha-main
+  npm install
+
+Start the static server (leave this terminal open):
+
+  cd ~/Downloads/NanoAlpha-main
+  python3 -m http.server 4173
+
+Open http://localhost:4173/ in a browser to verify the UI loads.
+
+
+================================================================================
+4. OUR BATCH WRAPPER — batch_process.mjs
+================================================================================
+
+NanoAlpha is designed for one image at a time in the browser. We added a Node
+script that drives the UI headlessly via Playwright:
+
+  ~/Downloads/NanoAlpha-main/batch_process.mjs
+
+For each input PNG it:
+  1. Opens NanoAlpha at http://localhost:4173/
+  2. Uploads the file via #fileInput
+  3. Clicks #autoColorButton (auto-detect + process)
+  4. Waits for "processed" in #statusText
+  5. Reads #resultCanvas, centre-fits to 200×200 with nearest-neighbour scaling
+  6. Writes the output PNG
+
+Environment overrides:
+  NANOALPHA_URL   default http://localhost:4173/
+  TILE_SIZE       default 200 (game tile size)
+
+
+================================================================================
+5. OUTPUT MODES (NON-DESTRUCTIVE BY DEFAULT)
+================================================================================
+
+The script supports three output strategies:
+
+A) SIBLING COPY (default)
+   Input:  carrot1.png
+   Output: carrot1_nanoalpha.png   (same folder)
+
+B) MIRROR FROM SOURCE TREE (--mirror-from + --copy-to)
+   Input:  ~/Downloads/pixellab sprites/renamed/flora/carrot/carrot1.png
+   Output: <project>/assets/base/sprites/flora/carrot/carrot1_nanoalpha.png
+   Preserves original filenames untouched in the game repo.
+
+C) IN-PLACE (--in-place)
+   Overwrites the source PNG. Creates a one-time backup as *.png.bak first.
+   Used on the first pass before we switched to the _nanoalpha convention.
+
+
+================================================================================
+6. WHAT WE ACTUALLY RAN ON THIS PROJECT
+================================================================================
+
+Flora sprites live at:
+
+  res://assets/base/sprites/flora/<plant_id>/*.png
+
+**Pass 1 — in-place on existing repo sprites (38 files)**
+  - Processed all flora PNGs in-place
+  - Originals backed up as *.png.bak
+  - Rebaked flora_atlas.png
+
+**Pass 2 — PixelLab import without touching originals**
+  - Restored originals from *.png.bak
+  - Ran batch with --mirror-from on the PixelLab renamed folder
+  - Wrote *_nanoalpha.png copies into assets/base/sprites/flora/
+  - Rebaked atlas again
+
+**Pass 3 — 12 new species (45 additional sprites)**
+  - Same mirror/copy workflow for new PixelLab art
+  - Atlas rebaked to 33 species × 6 stages = 198 cells, 0 placeholders
+
+Current convention: keep `stage_4.png` (or legacy names like `carrot1.png`) as
+the authored source; game prefers `*_nanoalpha.png` when present.
+
+
+================================================================================
+7. EXAMPLE COMMANDS
+================================================================================
+
+Project path (has spaces — quote it):
+
+  FLORA="/Users/apple/Documents/P4S/P4S 9.5.26 im taking the campaigns out to go opencore/assets/base/sprites/flora"
+  PIXELLAB="/Users/apple/Downloads/pixellab sprites/renamed/flora"
+
+# Terminal 1 — NanoAlpha server
+cd ~/Downloads/NanoAlpha-main && python3 -m http.server 4173
+
+# Terminal 2 — batch: mirror PixelLab → game repo as _nanoalpha copies
+cd ~/Downloads/NanoAlpha-main
+node batch_process.mjs \
+  --mirror-from "$PIXELLAB" \
+  --copy-to "$FLORA" \
+  --suffix _nanoalpha \
+  --glob "$PIXELLAB/**/*.png"
+
+# Terminal 2 — batch: single files (paths with spaces need quoting)
+node batch_process.mjs "/path/to/sprite.png"
+
+# Rebake game atlas after any sprite change
+"/Applications/Godot.app/Contents/MacOS/Godot" --headless \
+  --path "/Users/apple/Documents/P4S/P4S 9.5.26 im taking the campaigns out to go opencore" \
+  --script res://scripts/tools/run_bake_flora_atlas.gd
+
+Note: avoid piping paths with spaces through xargs; call node with explicit paths
+or a quoted --glob pattern instead.
+
+
+================================================================================
+8. HOW THE GAME CONSUMES *_nanoalpha.png
+================================================================================
+
+scripts/plant_growth.gd — sprite lookup
+
+  - _stage_sprite_file_names() and _legacy_stage_file_names() try
+    <name>_nanoalpha.png BEFORE the plain <name>.png
+  - _parse_stage_from_filename() strips "_nanoalpha" before parsing stage numbers
+  - Supports legacy naming (carrot0, rhubarb1, climbingbean2, reeds1, etc.)
+
+scripts/tools/flora_atlas_baker.gd — offline atlas bake
+
+  - Calls PlantGrowth.stage_sprite_path() → gets the _nanoalpha path when it exists
+  - Composes each 200×200 atlas cell by layer (ground cluster / understory /
+    canopy) then blits into flora_atlas.png
+  - Manifest written to data/flora_atlas_map.json
+
+Runtime map rendering uses the baked atlas via TileMapLayer flora layers in
+world.tscn (ground / understory / canopy), not the raw PNGs directly.
+
+
+================================================================================
+9. CHECKLIST FOR NEW SPRITES
+================================================================================
+
+  [ ] Drop new PNGs into assets/base/sprites/flora/<plant_id>/  (or PixelLab folder)
+  [ ] Start NanoAlpha server on :4173
+  [ ] Run batch_process.mjs → produce *_nanoalpha.png copies
+  [ ] Confirm output has alpha (Preview on checkerboard, or `sips -g hasAlpha`)
+  [ ] Rebake flora atlas (run_bake_flora_atlas.gd)
+  [ ] If new species: add row to data/plants_v3.csv + data/data_plants.gd if needed
+  [ ] Verify in-game Tile Inspector diorama and map flora layers
+
+
+================================================================================
+10. TROUBLESHOOTING
+================================================================================
+
+  Symptom: NanoAlpha UI loads but result is empty
+  Fix:     Use http://localhost:4173/ not file://
+
+  Symptom: batch_process.mjs times out on "processed"
+  Fix:     Check server is running; try one file manually in the browser first
+
+  Symptom: Playwright not installed
+  Fix:     cd ~/Downloads/NanoAlpha-main && npm install
+
+  Symptom: Atlas still shows opaque boxes
+  Fix:     Confirm *_nanoalpha.png exists; rebake atlas; check plant_growth path
+           candidates match your filename pattern (stage_4 vs carrot1 etc.)
+
+  Symptom: Wrong growth stage picked
+  Fix:     See plant_growth.gd legacy naming + zero-indexed folder detection
+
+
+================================================================================
+END
+================================================================================

@@ -1,0 +1,268 @@
+DATA VIEW — RADIATION WAVE LINES (DEBUG BRIEF FOR GEMINI)
+==========================================================
+Project: P4S opencore (Godot 4.x)
+Date written: 2026-06-11
+Symptom: Player cannot see colourful “radiation wave” lines moving between cells after Sleep / Next Turn, even in Soil Data View / Plant Data View.
+
+This document explains what the code is *supposed* to do, every gate that must pass for pixels to appear, and a checklist for finding the failure.
+
+
+1. WHAT WE ARE TRYING TO SHOW
+-----------------------------
+When the player ends a day (Sleep / Next Turn), nutrients (especially moisture from swales) can move between neighbouring grid cells.
+
+In **Soil Data View** or **Plant Data View**:
+  • Each map cell shows a central panel (70% of tile) with nutrient bar charts.
+  • A 15% “rim” around each cell is left clear for visuals.
+  • After the turn resolves, **coloured comet-like waves** should travel through the rim corridor from source cell → neighbour cell.
+  • The matching bar on the source should shrink; the neighbour bar should grow (synced animation).
+
+Waves are intentionally **only drawn when zoomed in** (camera.zoom.x >= 0.7) to save FPS.
+
+
+2. KEY FILES
+------------
+scripts/data_view_layout.gd
+  Shared geometry: cell size 200px, rim 15%, zoom threshold MIN_WAVE_ZOOM = 0.7,
+  wave path math (rim exit → corridor midpoint → rim entry), bar animation curves.
+
+scripts/data_view_overlay.gd (class DataViewOverlayNode)
+  Draws bar charts in the inner panel. Reads active flows from transfer overlay to
+  animate bar values when zoom >= 0.7. z_index = 6 on map.
+
+scripts/nutrient_transfer_overlay.gd (class NutrientTransferOverlayNode)
+  Stores flow list, draws glamorous waves in _draw(). z_index = 12 on map.
+
+scripts/nutrient_palette.gd
+  Stat colours (moisture=blue, nitrogen=purple, minerals=amber, etc.).
+
+scripts/starting_map.gd
+  Owns both overlays as children of the TileMapLayer (the main map node).
+  Records flows during simulation, snapshots soil stats, triggers display after sleep.
+
+scripts/hud.gd
+  Lenses menu adds “Soil Data View” / “Plant Data View” (metadata soil_data / plant_data).
+
+
+3. SCENE GRAPH (WHERE NODES LIVE)
+--------------------------------
+starting_map.gd extends TileMapLayer (the farm map itself).
+
+Children created in _ready() (approximate z_index):
+  GroundLayer / plant layers     z 1–4
+  LensOverlay (Sprite2D)         z 5
+  CapillaryOverlayNode           z 5
+  DataViewOverlayNode            z 6  (hidden until data lens)
+  energy_zone_overlay            z 7
+  maintenance_bubble_overlay     z 8
+  guild_overlay                  z 8
+  energy_cursor_overlay          z 9
+  farmer                         z 10
+  NutrientTransferOverlayNode    z 12  ← waves should draw here
+  preview_overlay                z 20
+
+HUD is a separate CanvasLayer (not a child of the map). It should not block map _draw unless a fullscreen Control covers the viewport.
+
+Camera: scripts/world.gd on Camera2D
+  min_zoom = 0.02, max_zoom = 1.5
+  Farmhouse default boot zoom is often 0.5 or 0.8 depending on campaign.
+
+
+4. LENS ACTIVATION
+------------------
+active_lens on starting_map must be "soil_data" or "plant_data".
+
+Set via HUD Lenses menu → _on_hud_lens_selected() in starting_map.gd.
+
+apply_lens() in starting_map.gd:
+  • Shows data_view_overlay when data lens active.
+  • Does NOT hide nutrient_transfer_overlay (it has no .visible toggle).
+  • queue_redraw() on transfer overlay when entering data lens.
+
+If active_lens is "normal", "moisture", etc., transfer overlay _draw() returns immediately.
+
+
+5. TURN PIPELINE (WHEN FLOWS ARE CREATED)
+-----------------------------------------
+Player clicks Sleep → trigger_sleep() → await advance_turn() → _process_turn_logic()
+
+At START of _process_turn_logic():
+  _turn_nutrient_flows.clear()
+  _last_transfer_snapshot = _snapshot_transfer_stats()
+    → PackedFloat32Array per stat (moisture, nitrogen, minerals) for every cell.
+
+During weather / soil simulation, explicit flows are recorded via:
+  _record_nutrient_flow(from, to, stat, amount)
+
+Instrumented sites:
+  • Swale capillary bleed (land == "swale" → thirsty neighbours) — moisture
+  • Moisture net drip (_apply_moisture_net_drip) — moisture to adjacent cells
+
+At END of night (trigger_sleep, after is_sleeping = false):
+  _finalize_nutrient_transfer_display()
+    → nutrient_transfer_overlay.show_turn_transfers(snapshot, _turn_nutrient_flows)
+
+show_turn_transfers():
+  1. Merges recorded flows.
+  2. Infers extra flows by comparing snapshot vs post-turn grid (neighbour pairs where
+     one cell lost stat and neighbour gained same stat).
+  3. Stores up to 320 flows in _flows[], each with: from, to, stat, amount, born (timestamp).
+  4. queue_redraw() on overlay.
+
+IMPORTANT TIMING FIX (already applied):
+  Display is deferred until is_sleeping = false (morning), NOT at end of _process_turn_logic,
+  so flows do not expire during the long sleep animation.
+
+
+6. WHEN _draw() ACTUALLY RUNS (ALL GATES)
+-----------------------------------------
+nutrient_transfer_overlay.gd _draw() returns without drawing if ANY of these fail:
+
+  A. map_ref is null
+  B. _flows is empty  ← very common if no transfers happened
+  C. active_lens NOT in ["soil_data", "plant_data"]
+  D. camera.zoom.x < 0.7  (DataViewLayout.waves_enabled)
+
+If drawing proceeds:
+  • Only flows touching visible tile bounds are drawn (viewport cull).
+  • Max 96 waves per frame (MAX_VISIBLE_WAVES).
+
+_process() on transfer overlay only queue_redraw() when:
+  • flows non-empty, map_ref set, data lens active, zoom >= 0.7, flows not expired.
+
+Flow lifetime: FLOW_LIFETIME = 8 seconds from born timestamp.
+
+
+7. COORDINATE SYSTEM (PAST BUG — CHECK AGAIN)
+---------------------------------------------
+Tile size = 200×200 world pixels.
+
+TileMapLayer.map_to_local(Vector2i) returns the **centre** of the tile, NOT top-left.
+
+All tile-aligned rects in this project use:
+  top_left = map_to_local(pos) - Vector2(100, 100)
+
+Wave path:
+  p0 = rim exit on source inner panel edge (centre + dir * 70)
+  p1 = midpoint between cell centres
+  p2 = rim entry on destination inner panel edge
+
+If waves are drawn but misaligned, suspect coordinate mismatch.
+If waves are invisible, suspect empty flows or gates (section 6), not coordinates.
+
+
+8. WHY _flows MIGHT BE EMPTY (MOST LIKELY ROOT CAUSE)
+-----------------------------------------------------
+The player will see NOTHING if no flow entries were created or all were filtered out.
+
+Recorded flows only happen when:
+  • A swale with moisture > 3 bleeds to neighbours (want > 0 per neighbour loop), OR
+  • A moisture_net fixture drips to neighbours.
+
+Inferred flows only happen when:
+  • After turn, cell A lost >= 0.03 of a stat AND neighbour B gained >= 0.03 of same stat.
+
+Will NOT produce flows:
+  • Clear weather on uniform soil with no swales/plants changing neighbours.
+  • Rain (+3 moisture everywhere) — all cells rise together, no neighbour loser/winner pair.
+  • Plant exchange (_process_plant_biology "exchange") — changes same cell only, not recorded as cross-cell flow unless inference catches a coincidental neighbour pattern.
+
+RECOMMENDED TEST SETUP:
+  1. Dig a swale.
+  2. Ensure swale moisture > 3 and neighbour cultivated soil moisture < 7.
+  3. Soil Data View, zoom >= 0.8 (scroll in).
+  4. Sleep / Next Turn.
+  5. Watch rim between swale and neighbour within 8 seconds of morning.
+
+
+9. ZOOM GATE
+------------
+DataViewLayout.MIN_WAVE_ZOOM = 0.7
+
+Checked via: map_ref.get_viewport().get_camera_2d().zoom.x
+
+If player is at 0.5 zoom (common wide view), waves are completely skipped and bar animation uses final values only.
+
+Boot zoom for some campaigns is 0.25–0.5 — player MUST zoom in past 0.7 after waking.
+
+
+10. VISUAL STYLE (WHAT TO EXPECT IF WORKING)
+--------------------------------------------
+Triple-pass polyline trail (wide glow + bright + white core).
+Comet tail of fading circles.
+5 expanding arcs at pulse position.
+White-hot core circle (~5px) at travelling pulse.
+Coloured rim rectangle outline on source and dest cells.
+Destination inner panel bloom on arrival.
+
+Colours from NutrientPalette (moisture blue, nitrogen purple, etc.).
+
+
+11. SUGGESTED DEBUG PRINTS (ADD TEMPORARILY)
+----------------------------------------------
+In starting_map.gd _finalize_nutrient_transfer_display():
+
+  print("TRANSFER finalize lens=", active_lens,
+        " zoom=", get_viewport().get_camera_2d().zoom.x if cam else -1,
+        " recorded=", _turn_nutrient_flows.size(),
+        " snapshot_keys=", _last_transfer_snapshot.keys())
+
+In nutrient_transfer_overlay.gd show_turn_transfers() end:
+
+  print("TRANSFER show_turn_transfers merged flows=", _flows.size())
+
+In nutrient_transfer_overlay.gd _draw() top:
+
+  if _flows.size() > 0:
+    print("TRANSFER draw flows=", _flows.size(),
+          " zoom_ok=", DataViewLayout.waves_enabled(map_ref),
+          " lens=", map_ref.get("active_lens"))
+
+If recorded=0 and merged flows=0 → simulation produced no detectable transfers (not a render bug).
+If flows>0 but draw never prints → _process/_draw gates failing (lens/zoom).
+If draw prints but still invisible → rendering layer / coordinate / alpha / clipped by parent.
+
+
+12. OTHER THINGS TO VERIFY IN GODOT EDITOR
+------------------------------------------
+  • NutrientTransferOverlay node exists under StartingMap / map node at runtime.
+  • Node is not .hide() and modulate.a is 1.
+  • Map node visible; not inside a SubViewport with wrong size.
+  • No shader/material on parent that zeroes alpha.
+  • active_lens property readable via map_ref.get("active_lens") from child (should work on Node).
+  • After sleep, wait < 8s before zooming out or switching lens (flows clear when expired).
+
+Optional nuclear test (bypass all logic):
+  In NutrientTransferOverlayNode._draw(), if data lens active and zoom ok, unconditionally draw a
+  thick magenta line from map_to_local(10,10) to map_to_local(11,10).
+  If THAT is invisible, problem is layer/camera/coordinate—not flow data.
+
+
+13. BAR SYNC (SEPARATE FROM WAVE LINES)
+---------------------------------------
+data_view_overlay._animated_stat_value() only adjusts bars when:
+  • transfer_overlay linked (set in starting_map _ready: data_view_overlay.transfer_overlay = ...)
+  • DataViewLayout.waves_enabled(map_ref) true
+  • get_active_flows() returns entries matching cell + stat
+
+If waves are gated off by zoom, bars also freeze at post-turn values.
+
+
+14. QUICK CHECKLIST FOR GEMINI
+------------------------------
+[ ] active_lens is soil_data or plant_data at morning?
+[ ] camera.zoom.x >= 0.7 at morning?
+[ ] _turn_nutrient_flows.size() > 0 OR inferred flows > 0 after show_turn_transfers?
+[ ] _finalize_nutrient_transfer_display() called (is_sleeping just became false)?
+[ ] _draw() on NutrientTransferOverlayNode actually invoked (add print)?
+[ ] Test swale → dry neighbour scenario?
+[ ] Within 8s of turn end?
+[ ] Nuclear magenta test line visible?
+
+Report back which checklist item fails first — that isolates the bug layer (data vs gates vs render).
+
+
+15. REVISION HISTORY
+--------------------
+2026-06-11 — Initial debug brief after multiple iterations: rim layout, deferred display,
+             zoom gate 0.7, z_index 12, glamorous multi-pass drawing.

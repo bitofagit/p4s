@@ -6,9 +6,9 @@
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 12.0
-content_margin_top = 10.0
+content_margin_top = 6.0
 content_margin_right = 12.0
-content_margin_bottom = 10.0
+content_margin_bottom = 6.0
 bg_color = Color(0.11, 0.1, 0.09, 0.96)
 border_width_left = 1
 border_width_top = 1
@@ -52,12 +52,12 @@ script = ExtResource("1_hud")
 editor_description = "Energy Vision is selected from the Lenses menu (hud.gd), not a separate panel in the scene."
 
 [node name="Bottom_Dashboard" type="MarginContainer" parent="CanvasLayer" unique_id=916628329]
-custom_minimum_size = Vector2(0, 120)
+custom_minimum_size = Vector2(0, 130)
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -120.0
+offset_top = -130.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_constants/margin_left = 10
@@ -66,7 +66,7 @@ theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
 [node name="PanelContainer" type="PanelContainer" parent="CanvasLayer/Bottom_Dashboard" unique_id=1356272303]
-custom_minimum_size = Vector2(0, 100)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -189,6 +189,10 @@ text = "Hotkeys"
 [node name="Main_Menu" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000012]
 layout_mode = 2
 text = "Main Menu"
+
+[node name="Exit_Game" type="Button" parent="CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer" unique_id=501000013]
+layout_mode = 2
+text = "Exit Game"
 
 [node name="SeedPicker" parent="CanvasLayer" unique_id=461116770 instance=ExtResource("3_seedpick")]
 

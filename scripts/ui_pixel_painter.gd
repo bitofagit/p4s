@@ -355,12 +355,12 @@ func _build_storage_filename(safe_base: String) -> String:
 
 
 func _split_storage_filename(storage_name: String) -> Dictionary:
-	var name := storage_name
+	var file_stem := storage_name
 	for i in range(CATEGORY_PREFIXES.size()):
 		var prefix: String = CATEGORY_PREFIXES[i]
-		if name.begins_with(prefix):
-			return {"category": i, "base": name.substr(prefix.length())}
-	return {"category": 0, "base": name}
+		if file_stem.begins_with(prefix):
+			return {"category": i, "base": file_stem.substr(prefix.length())}
+	return {"category": 0, "base": file_stem}
 
 
 func _apply_target_context() -> void:
@@ -765,22 +765,22 @@ func _layout_vectors() -> Array[Vector2]:
 	var aspect: float = minf(rect_size.x / tex_size, rect_size.y / tex_size)
 	var drawn: Vector2 = Vector2(tex_size * aspect, tex_size * aspect)
 	var offset: Vector2 = (rect_size - drawn) * 0.5
-	var scale: Vector2 = Vector2(drawn.x / tex_size, drawn.y / tex_size)
-	return [offset, drawn, scale]
+	var draw_scale: Vector2 = Vector2(drawn.x / tex_size, drawn.y / tex_size)
+	return [offset, drawn, draw_scale]
 
 
 func _pixel_to_screen(px: Vector2i) -> Vector2:
 	var layout: Array[Vector2] = _layout_vectors()
 	var offset: Vector2 = layout[0]
-	var scale: Vector2 = layout[2]
-	return offset + Vector2(px.x, px.y) * scale
+	var draw_scale: Vector2 = layout[2]
+	return offset + Vector2(px.x, px.y) * draw_scale
 
 
 func _pixel_rect_to_screen(r: Rect2i) -> Rect2:
 	var layout: Array[Vector2] = _layout_vectors()
 	var offset: Vector2 = layout[0]
-	var scale: Vector2 = layout[2]
-	return Rect2(offset + Vector2(r.position) * scale, Vector2(r.size) * scale)
+	var draw_scale: Vector2 = layout[2]
+	return Rect2(offset + Vector2(r.position) * draw_scale, Vector2(r.size) * draw_scale)
 
 
 func _draw_selection_overlay() -> void:

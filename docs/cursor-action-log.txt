@@ -726,3 +726,67 @@ Cursor action log — one line per substantive change (newest at bottom). Append
 2026-06-04 — Permaculture 101: `opencore_weather.csv` / `opencore_dialogue.csv` 10-day curriculum; tutorial narrative match + forecast flash (`hud.gd`).
 2026-06-04 — `.gitignore` open-core shields (premium CSVs, campaigns/, assets/premium/, obsidian/); initial commit on `main`.
 2026-06-05 — `.gitignore` open-core firewall (Godot defaults, premium campaigns, OS files); `git rm --cached` lore.translation, export_presets, .DS_Store.
+2026-06-05 — Track `obsidian/` design docs; shield `11_Premium_Ghost_Story_Archive.md` (nested path).
+2026-06-09 — Game feel: plant spawn/stress/death tweens, `apply_screen_shake` + hit-stop (world.gd), dirt/water particle bursts, `WeatherModulate` CanvasModulate weather tint + rain, capillary swale shimmer overlay (`starting_map.gd`, `world.gd`, `world.tscn`).
+2026-06-09 — Fix `Array[Array]` typed assignment crash: `try_load_custom_starting_grid` (`farm_data_manager.gd:272`) and `_deserialize_grid` (`save_manager.gd`) now build typed grids.
+2026-06-09 — Fix brown-checkerboard boot: Map Editor scratch grid (`user://campaigns/custom/`) no longer hijacks campaign boots; `_resolve_custom_starting_grid_path` is campaign-id-gated. Added `obsidian/cursor_rendering_guardrails.md`.
+2026-06-09 — Fix blue tint on rotovated land: capillary shimmer now swale-only (`_capillary_shimmer_moisture`); rotovate/e_tiller/build_mound clamp leftover swale moisture to 10; shimmer cache cleared on full repaint.
+2026-06-09 — Ergonomics pass: sidebar docks smart-fade to 0.4 alpha when idle, per-tool hardware cursors (`_update_tool_cursor`), hold-Tab quick-select wheel (Inspect/Rotovate/Water/Seeds), shift-tooltip lerp smoothing, 12px PanelContainer breathing room (`hud.gd`, `starting_map.gd`).
+2026-06-11 — Replaced smart-fade docks with Civ-style edge tabs: symbol strips on both sides toggle/slide sidebar panels (`_register_edge_tab`, `_slide_dock`); panels start collapsed; inspector/queue auto-pop via `_focus_sidebar_panel`.
+2026-06-11 — Edge tabs: yellow border on open/selected icons; per-side × at strip bottom closes all panels on that side (`hud.gd`).
+2026-06-11 — Soil/Plant Data View lenses: per-cell micro bar charts (`data_view_overlay.gd`), turn-transfer arcs (`nutrient_transfer_overlay.gd`), shared `NutrientPalette` colours in soil inspector + HUD lens menu.
+2026-06-11 — Data view overlay alignment: map_to_local is tile centre — offset by TILE_HALF (100px) for bar grid rects; transfer arcs use centre directly.
+2026-06-11 — Nutrient transfer arcs: record swale/net flows during turn, always snapshot, show after sleep ends (not during animation); brighter/longer arcs; inference fallback.
+2026-06-11 — Data view rim layout (15% corridor): larger centred bars (`data_view_layout.gd`), rim radiation waves, animated bar shrink/grow synced to nutrient travel.
+2026-06-11 — Glam foreground radiation waves (z=12), zoom-gated at 0.7+ with viewport culling; triple-pass comet trails + bar sync only when zoomed in.
+2026-06-11 — Pause menu: Exit Game under Main Menu; unsaved-progress confirm (`SaveManager.session_has_unsaved_progress`, `hud.gd` leave dialog).
+2026-06-11 — Nutrient wave debug: TRANSFER finalize/merge/draw prints + magenta nuclear line in `nutrient_transfer_overlay._draw`.
+2026-06-11 — Transfer overlay: continuous redraw in data lens; nuclear test at home_pos; visible sync in apply_lens (was drawing off-screen at 10,10).
+2026-06-11 — Nutrient flow viz: liquid pixel rainbow ribbons (band width = nutrient share); wavy liquid_path_point; removed debug/nuclear draw.
+2026-06-11 — Plant nutrient forecast: ghost bars in tile inspector + soil data view; Shift tooltip per-plant exchange breakdown (`plant_nutrient_forecast.gd`).
+2026-06-11 — Transfer waves: shore-lapping directional surf, brighter vivid pixels, chevrons/foam, MIN_WAVE_ZOOM 0.5 + zoom draw scale.
+2026-06-11 — Transfer overlay z=5 (above map tiles, below data-view bar charts at z=6).
+2026-06-11 — Shift hover tooltip: viewport clamp + flip near edges, width wrap (`starting_map.gd`).
+2026-06-11 — Fix shift tooltip: RichTextLabel uses custom_minimum_size (no max_width in Godot 4.6).
+2026-06-11 — Fix invisible transfer waves: rim-corridor paths, panel/wave/bar z=6/6/7 split, stop clearing flows when zoom dips.
+2026-06-11 — Transfer waves: sleep-synced timing (prelude on space, real flows after sim, dissipate at wake); softer harmonic viz.
+2026-06-11 — assets/base/sprites: expanded pixel-art folder taxonomy + ASSET_MANIFEST.txt; premium/sprites mirror root.
+2026-06-11 — Calendar month names from 24_Months.md (Dawnseed, etc.); hover shows Early Spring season labels.
+2026-06-11 — Calendar/gameplay season sync: turn 1 = Dawnseed 1st Year 1; format_calendar_date/format_year; season display after turn advance; sync on save load.
+2026-06-11 — Weather Dock: 7-day verified forecast grid (weekday + day from calendar); formal meteorological detail panel.
+2026-06-11 — Weather Dock: 5-day radar certainty (row 1); days 5–24 show seeded % confidence (30–85) at modulate 0.6.
+2026-06-11 — starting_map.gd: farmhouse placement rejects stream/bridge buffer; _enforce_stream_clearance_around_house on boot.
+2026-06-11 — Weather Dock: plain-English detail panel and farmer-friendly flavour text (accessibility pass).
+2026-06-11 — inbox farmer: rotations GIF frame 0 → farmer.png; 8-dir walk anims on sleep zip (farmer_character_anim.gd).
+2026-06-11 — obsidian/25_Inbox_Farmer_Animations.md: PixelLab Objects → inbox GIFs → Godot pipeline doc.
+2026-06-11 — Copied obsidian/24_Months.md into P4S Obsidian Design Docs vault; Welcome link.
+2026-06-11 — Obsidian vault migration: rsync P4S 23.5.26 design docs → obsidian/ root; .gdignore shield; git add safe docs.
+2026-06-11 — inbox/: flattened 284 PixelLab files into inbox/pixellab sprites/; removed 20 nested export folders.
+2026-06-11 — 6-stage plant growth: plants_v3.csv days_to_mature/senescence; plant_growth.gd; flora/{id}/ stage sprites; starting_map stage rendering.
+2026-06-11 — plants_v3.csv: added nettle, dandelion, sweetcorn, climbing_bean, squash, gooseberry, willow, reed; fixed data_guilds.gd plant ids.
+2026-06-11 — flora/STAGE_SPRITE_MANIFEST.txt: regenerated for 33 species with HAVE/NEED status per stage.
+2026-06-26 — plants_v3.csv: 8 design-doc plants (nettle→reed) updated to V3 ecological spec; mature_turn synced.
+2026-06-26 — Stage-scaled plant exchange: PlantGrowth.stage_multipliers; starting_map biology + shift tooltip; plant_nutrient_forecast.
+2026-06-26 — obsidian/26_Six_Stage_Growth_and_Dynamic_Exchange.md: vault doc for 6-stage growth + dynamic exchange.
+2026-07-07 — docs/GEMINI_GAME_DESIGN_BRIEF.txt: comprehensive onboarding doc for external AI design assistants.
+2026-07-07 — plant_growth.gd: accept stage_N and stageN sprite filenames (nested and flat).
+2026-07-07 — plant_growth.gd: canopy trees accept stage{N}nofruit / stage{N}withfruit sprite names.
+2026-07-09 — SUCCESS_plant_sprite_manifest_final_from_image.ods: ticked 27 existing flora sprites with filenames.
+2026-07-09 — Flora pipeline refactor: offline bake_flora_atlas.gd, 14×15 grid atlas, World flora TileMapLayers, removed runtime stitching.
+2026-07-09 — NanoAlpha batch: removed backgrounds from 38 flora PNGs; rebaked flora_atlas.png (backups as *.png.bak).
+2026-07-09 — Pixellab sprites: 38 *_nanoalpha.png copies in flora/ (originals restored); game prefers _nanoalpha in baker + atlas rebaked.
+2026-07-09 — docs/SPRITE_RENDERING_AND_PERFORMANCE.txt: atlas pipeline + slowdown brainstorm for Gemini.
+2026-07-09 — Tile inspector plant_death_log: record deaths (turn + reason) in farm_data_manager; show history in hud.gd.
+2026-07-09 — Dev mode skips tutorial narrative popups; pause Sound/Graphics/Gameplay settings navigate in-panel (hud.gd).
+2026-07-09 — plant_death_log: lifespan turns + growth stage at death; peak_age/planted_turn tracking on plant.
+2026-07-09 — 12 new plant species: NanoAlpha on 45 sprites; plant_growth legacy naming; flora atlas rebaked (198 PNG, 0 placeholders).
+2026-07-09 — Tile inspector: layered flora sprite preview (terrain + ground/understory/canopy) in hud.gd.
+2026-07-09 — Flora layer fix: 3 TileMapLayers (ground/understory/canopy) with depth offsets; inspector diorama preview.
+2026-07-09 — Flora atlas baker: ground/understory cluster compositor; asymmetric canopy (-15,-20) / understory-right bake; inspector shadow diorama.
+2026-07-09 — Flora Y-sort on World + flora TileMapLayers (y_sort_origin at tile base); atlas ground/understory blit bounds fixed.
+2026-07-09 — Flora Z-index inverted (canopy back / ground front); canopy offset (-25,-35); 6-stamp 65px groundcover band rebaked.
+2026-07-09 — flora_atlas_baker.gd: cluster compose blit_rect → blend_rect (ground 6-stamp + understory 2-stamp) to fix transparent pixel occlusion.
+2026-07-09 — flora_atlas_baker.gd: canopy compose +20% (240px), understory cluster −10% (135px); atlas rebaked.
+2026-07-09 — Flora Z-index: understory back (1), canopy front of understory (2), ground front (3); inspector diorama reordered.
+2026-07-09 — starting_map.gd: dig_swale clears all plant layers on that cell (queue preview + night execution).
+2026-07-09 — dig_swale records plant deaths as Swaled in tile inspector history (farm_data_manager.gd).

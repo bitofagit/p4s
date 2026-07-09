@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="P4S opencore"
+config/version="0.9.5.26"
 run/main_scene="uid://b8mainmenu01"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"

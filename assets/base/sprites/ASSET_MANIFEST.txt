@@ -1,0 +1,92 @@
+P4S opencore — pixel art drop zones (res://assets/base/sprites/)
+Premium fork mirrors this tree under res://assets/premium/sprites/ (git-ignored).
+
+Convention: PNG, nearest-neighbour / pixel snap. Plants: 128×128 → atlas stitch OR user://databases/sprites/{id}.png
+Map structures: match data/data_objects.gd atlas_x when used on StructureLayer tile atlas.
+
+── ui/icons/tools ──
+Rotovate, scythe, uproot, harvest, chop_and_drop, dig_swale, build_mound, water_tile, hosepipe,
+apply_tea, e_tiller, plant/seed, build, build_path, demolish, additive (compost/mulch), empty hand.
+
+── ui/icons/lenses ──
+Soil data, plant data, moisture, nitrogen, growth, energy, guild, design, normal/overworld.
+
+── ui/icons/hud ──
+Tile inspector, forecast/events, ecology scanner (minimap), today's plan (queue), farm hands,
+sleep/end turn, almanac, pause, save/load, edge-tab strip icons (replace emoji placeholders).
+
+── ui/icons/build ──
+Thumbnails for data_objects.gd + campaign fixtures: house, pig_house, duck_house, pen, gate,
+honesty_box, compost_brewer, solar_panel, battery, water_butt, beehive, polytunnel zone.
+
+── ui/icons/items ──
+Seed packets, harvest yields, inventory icons, honesty-box produce, upgrade/meta icons.
+
+── ui/cursors ──
+Per-tool mouse cursors (32×32): hoe, water, plant, build, demolish, inspect.
+
+── flora/{canopy,understory,groundcover} ──
+Default open-core plant sprites (128×128). Custom plants go to user://databases/sprites/.
+
+── flora/seeds ──
+Seed-picker icons (small, ~32–48px) per plant id.
+
+── structures/community ──
+Honesty box, compost brewer, gate, shared farm fixtures.
+
+── structures/animal_systems ──
+Pig house, duck house, pen fencing, animal feeders.
+
+── structures/farmhouse ──
+Farmhouse core, door, chimney smoke frames (optional).
+
+── structures/energy ──
+Solar panel, battery array, energy-zone hints.
+
+── structures/water ──
+Water butt, moisture net, sprinkler, swale/rain catchment props.
+
+── structures/automata ──
+Drone hub, drone pollinator, smart shade (GVCS / automata campaign).
+
+── structures/zones ──
+Polytunnel plastic overlay, path segments, grey-path tiles.
+
+── characters/farmers ──
+Player farmer, directional walk frames (optional).
+
+── characters/workers ──
+Earthworker, caretaker, maintenance, per-worker roster sprites.
+
+── characters/animals ──
+ducks/ (have art), pigs/, bees/ (beehive), generic poultry.
+
+── characters/npcs ──
+Oakhaven / narrative NPC portraits & map sprites.
+
+── environment/terrain/* ──
+Existing: grass, forest, cultivated, farmnextdoor. Add: swale, mound, bare_soil, path_edge variants.
+
+── environment/water/* ──
+River, stream (have art). Add: ripple overlays, capillary shimmer.
+
+── environment/earthworks ──
+Swale berm cross-section hints, mound silhouette, terrace steps.
+
+── environment/weather ──
+Rain streaks, frost rim, drought heat shimmer, snow dust (particle sheets).
+
+── environment/zones ──
+Polytunnel interior tint, pen boundary, property-line markers.
+
+── effects/floating_text ──
+Small icons for thirsty, hungry, frozen, toxic, guild, pollination, profit.
+
+── effects/particles ──
+Sleep transition, harvest burst, nutrient wave reference palette, chop-and-drop dust.
+
+── props/harvest ──
+Ground piles, baskets, dropped yield markers on tiles.
+
+── props/signs ──
+Triage pins, design-lens cell notes, tutorial markers.

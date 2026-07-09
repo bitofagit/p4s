@@ -1,6 +1,6 @@
 # Permaculture 4 Squares (P4S)
 
-Open-source permaculture grid simulator built with **Godot 4.x**. Open **this folder** in Godot (the one that contains `scenes/`, `scripts/`, and `data/`) via **`project.godot`**. Do not open nested folders like `p-4s-8.5.26/` — those are old stubs without game files.
+**Version 0.9.5.26** — Open-source permaculture grid simulator built with **Godot 4.x**. Open **this folder** in Godot (the one that contains `scenes/`, `scripts/`, and `data/`) via **`project.godot`**. Do not open nested folders like `p-4s-8.5.26/` — those are old stubs without game files.
 
 ## Documentation for developers
 

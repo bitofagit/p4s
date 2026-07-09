@@ -31,6 +31,7 @@ var value_fungi: Label
 var value_bacteria: Label
 var value_macro: Label
 var value_toxicity: Label
+var _forecast_hint: Label
 
 
 func _ready() -> void:
@@ -139,43 +140,61 @@ func _build_ui() -> void:
 	bars_block.add_child(d_n.row)
 	bar_nitrogen = d_n.bar
 	value_nitrogen = d_n.value_label
+	_tint_stat_row(d_n, "nitrogen")
 
 	var d_min := _create_stat_row("Minerals")
 	bars_block.add_child(d_min.row)
 	bar_minerals = d_min.bar
 	value_minerals = d_min.value_label
+	_tint_stat_row(d_min, "minerals")
 
 	var d_m := _create_stat_row("Moisture")
 	bars_block.add_child(d_m.row)
 	bar_moisture = d_m.bar
 	value_moisture = d_m.value_label
+	_tint_stat_row(d_m, "moisture")
 
 	var d_s := _create_stat_row("Structure")
 	bars_block.add_child(d_s.row)
 	bar_structure = d_s.bar
 	value_structure = d_s.value_label
+	_tint_stat_row(d_s, "structure")
 
 	var d_fu := _create_stat_row("Fungi")
 	bars_block.add_child(d_fu.row)
 	bar_fungi = d_fu.bar
 	value_fungi = d_fu.value_label
+	_tint_stat_row(d_fu, "fungi")
 
 	var d_b := _create_stat_row("Bacteria")
 	bars_block.add_child(d_b.row)
 	bar_bacteria = d_b.bar
 	value_bacteria = d_b.value_label
+	_tint_stat_row(d_b, "bacteria")
 
 	var d_ma := _create_stat_row("Macro-Life")
 	bars_block.add_child(d_ma.row)
 	bar_macro = d_ma.bar
 	value_macro = d_ma.value_label
+	_tint_stat_row(d_ma, "macro_life")
 
 	var d_t := _create_stat_row("Toxicity")
 	bars_block.add_child(d_t.row)
 	bar_toxicity = d_t.bar
 	value_toxicity = d_t.value_label
+	_tint_stat_row(d_t, "toxicity")
 
 	_main.add_child(bars_block)
+
+	_forecast_hint = Label.new()
+	_forecast_hint.name = "ForecastHint"
+	_forecast_hint.text = "Frosted bar = next-turn plant change · Hold Shift on tile for per-plant detail"
+	_forecast_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_forecast_hint.add_theme_font_size_override("font_size", 10)
+	_forecast_hint.add_theme_color_override("font_color", Color(0.52, 0.55, 0.58))
+	_forecast_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_forecast_hint.hide()
+	_main.add_child(_forecast_hint)
 
 
 func _grid_key(text: String) -> Label:
@@ -198,6 +217,20 @@ func _grid_value() -> Label:
 	lbl.add_theme_font_size_override("font_size", 13)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return lbl
+
+
+func _tint_stat_row(row_data: Dictionary, stat_id: String) -> void:
+	var name_lbl: Label = row_data.get("name_label")
+	var value_lbl: Label = row_data.get("value_label")
+	if is_instance_valid(name_lbl):
+		NutrientPalette.apply_label_color(name_lbl, stat_id)
+	if is_instance_valid(value_lbl):
+		NutrientPalette.apply_label_color(value_lbl, stat_id)
+	var bar: ProgressBar = row_data.get("bar")
+	if is_instance_valid(bar):
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = NutrientPalette.color_for(stat_id)
+		bar.add_theme_stylebox_override("fill", fill)
 
 
 func _fmt_bar_stat(v: float) -> String:
@@ -234,6 +267,44 @@ func _apply_safe_zone(bar: ProgressBar, range_arr: Variant) -> void:
 		sz.offset_bottom = 0
 	else:
 		sz.hide()
+
+
+func _apply_forecast_ghost(bar: ProgressBar, current: float, delta: float, stat_id: String) -> void:
+	var ghost := bar.get_node_or_null("ForecastGhost") as ColorRect
+	if ghost == null:
+		ghost = ColorRect.new()
+		ghost.name = "ForecastGhost"
+		ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_child(ghost)
+
+	if absf(delta) < 0.02:
+		ghost.hide()
+		return
+
+	ghost.show()
+	var col := NutrientPalette.color_for(stat_id)
+	col.a = 0.32
+	if delta < 0.0:
+		col = col.lerp(Color(0.92, 0.38, 0.38), 0.35)
+		col.a = 0.38
+
+	ghost.color = col
+	var cur_frac: float = current / MAX_STAT
+	var end_frac: float = (current + delta) / MAX_STAT
+	var left: float = clampf(minf(cur_frac, end_frac), 0.0, 1.0)
+	var right: float = clampf(maxf(cur_frac, end_frac), 0.0, 1.0)
+	if right - left < 0.004:
+		ghost.hide()
+		return
+
+	ghost.anchor_top = 0.0
+	ghost.anchor_bottom = 1.0
+	ghost.anchor_left = left
+	ghost.anchor_right = right
+	ghost.offset_left = 0
+	ghost.offset_right = 0
+	ghost.offset_top = 0
+	ghost.offset_bottom = 0
 
 
 func update_profile(stats: Dictionary) -> void:
@@ -284,6 +355,20 @@ func update_profile(stats: Dictionary) -> void:
 	_apply_safe_zone(bar_moisture, reqs.get("moisture"))
 	_apply_safe_zone(bar_nitrogen, reqs.get("nitrogen"))
 	_apply_safe_zone(bar_minerals, reqs.get("minerals"))
+
+	var forecast: Dictionary = stats.get("forecast", {})
+	var ftotals: Dictionary = forecast.get("totals", {})
+	_apply_forecast_ghost(bar_moisture, raw_moisture, float(ftotals.get("moisture", 0.0)), "moisture")
+	_apply_forecast_ghost(bar_nitrogen, raw_nitrogen, float(ftotals.get("nitrogen", 0.0)), "nitrogen")
+	_apply_forecast_ghost(bar_minerals, raw_minerals, float(ftotals.get("minerals", 0.0)), "minerals")
+	_apply_forecast_ghost(bar_structure, raw_structure, float(ftotals.get("structure", 0.0)), "structure")
+	_apply_forecast_ghost(bar_fungi, raw_fungi, float(ftotals.get("fungi", 0.0)), "fungi")
+	_apply_forecast_ghost(bar_bacteria, raw_bacteria, float(ftotals.get("bacteria", 0.0)), "bacteria")
+	_apply_forecast_ghost(bar_macro, raw_macro, float(ftotals.get("macro_life", 0.0)), "macro_life")
+	_apply_forecast_ghost(bar_toxicity, raw_toxicity, float(ftotals.get("toxicity", 0.0)), "toxicity")
+
+	if is_instance_valid(_forecast_hint):
+		_forecast_hint.visible = PlantNutrientForecast.has_forecast(forecast)
 
 	var vitality_pct := ((fungi * bacteria * macro_life) / 1000.0) * 100.0
 	vitality_pct = clampf(vitality_pct, 0.0, 100.0)

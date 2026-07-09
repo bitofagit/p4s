@@ -1,7 +1,7 @@
 # Open Core Architecture
 **Tags:** #architecture #open-source #workflow
 
-**Permaculture 4 Squares** (P4S) is built on an "Open Core" model. The underlying permaculture engine (grid math, soil simulation, generic UI) will be open-sourced under an MIT licence. The premium game (the Yorkshire lore, ghost story, procedural audio, and pixel art) is strictly closed-source and copyrighted.
+Permaculture 4 Squares is built on an "Open Core" model. The underlying permaculture engine (grid math, soil simulation, generic UI) will be open-sourced under an MIT licence. The premium game (the Yorkshire lore, ghost story, procedural audio, and pixel art) is strictly closed-source and copyrighted.
 
 ## 1. The Asset Split
 To maintain this legal boundary, assets MUST be strictly divided into two folders:
@@ -31,6 +31,6 @@ Hardcoded `.png` / `.wav` / `.mp3` references in `.gd` scripts resolve under `re
 
 Do not relocate `.csv`, `.gd`, `.tscn`, or `.tres` paths in this audit unless they are premium-only overrides in inherited scenes.
 
-## 5. Public repo (Permaculture 4 Squares)
+## 5. Premium narrative (commercial only)
 
-OSS build uses **Insight** meta-progression, **Meta-Dashboard**, and ecological **Training Simulation** copy (`data/dialogue.csv`, `data/lore.csv`). Premium ghost/Yorkshire narrative archive: **[[11_Premium_Ghost_Story_Archive]]** (commercial fork).
+Ghost story, roguelike Karma, and scripted tutorial beats are documented in **[[11_Premium_Ghost_Story_Archive]]** — strip from the public repo; reattach via inherited scenes + gitignored CSVs when shipping Permaculture 4 Squares commercial.

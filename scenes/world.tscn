@@ -2,9 +2,10 @@
 
 [ext_resource type="Script" uid="uid://1aofupkf3la" path="res://scripts/world.gd" id="1_fj7yv"]
 [ext_resource type="Texture2D" uid="uid://dl5latp8qggkp" path="res://icon.svg" id="2_tlwt5"]
-[ext_resource type="Script" uid="uid://xrlaxhioc7i7" path="res://scripts/starting_map.gd" id="3_tlwt5"]
+[ext_resource type="Texture2D" path="res://assets/base/sprites/atlas/flora_atlas.png" id="3_flora"]
+[ext_resource type="Script" uid="uid://xrlaxhioc7i7" path="res://scripts/starting_map.gd" id="4_map"]
 
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_aqk2v"]
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_terrain"]
 texture = ExtResource("2_tlwt5")
 0:0/0 = 0
 1:0/0 = 0
@@ -71,14 +72,47 @@ texture = ExtResource("2_tlwt5")
 6:7/0 = 0
 7:7/0 = 0
 
-[sub_resource type="TileSet" id="TileSet_036b0"]
-sources/0 = SubResource("TileSetAtlasSource_aqk2v")
+[sub_resource type="TileSet" id="TileSet_terrain"]
+tile_size = Vector2i(200, 200)
+sources/0 = SubResource("TileSetAtlasSource_terrain")
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_flora"]
+texture = ExtResource("3_flora")
+texture_region_size = Vector2i(200, 200)
+
+[sub_resource type="TileSet" id="TileSet_flora"]
+tile_size = Vector2i(200, 200)
+sources/0 = SubResource("TileSetAtlasSource_flora")
 
 [node name="World" type="Node2D" unique_id=866994575]
+y_sort_enabled = true
+
+[node name="WeatherModulate" type="CanvasModulate" parent="."]
+color = Color(1, 1, 1, 1)
 
 [node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=549802686]
-tile_set = SubResource("TileSet_036b0")
-script = ExtResource("3_tlwt5")
+y_sort_enabled = true
+tile_set = SubResource("TileSet_terrain")
+script = ExtResource("4_map")
+
+[node name="UnderstoryLayer" type="TileMapLayer" parent="TileMapLayer"]
+z_index = 1
+y_sort_enabled = true
+texture_filter = 0
+tile_set = SubResource("TileSet_flora")
+
+[node name="CanopyLayer" type="TileMapLayer" parent="TileMapLayer"]
+z_index = 2
+position = Vector2(-25, -35)
+y_sort_enabled = true
+texture_filter = 0
+tile_set = SubResource("TileSet_flora")
+
+[node name="GroundLayer" type="TileMapLayer" parent="TileMapLayer"]
+z_index = 3
+y_sort_enabled = true
+texture_filter = 0
+tile_set = SubResource("TileSet_flora")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1896162644]
 position = Vector2(12800, 12800)

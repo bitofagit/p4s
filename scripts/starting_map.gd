@@ -2,7 +2,7 @@ extends TileMapLayer
 
 ## Game map controller (large file): generation, input, tools, workers, overlays, narrative hooks, HUD wiring.
 ## Uses autoloads: FarmDataManager (state), SaveManager (persistence + pending load), MetaManager (meta), RadioManager (audio).
-## Story/tutorial weather: DataScenario loads res://data/story_weather.csv; _get_weather_for_day() fills the 5-slot forecast (scripted calendar days when not dev_mode, else random).
+## Story/tutorial weather: DataScenario loads res://data/story_weather.csv; _get_weather_for_day() fills the 25-day forecast.
 ## Guild growth: standard guilds are 1-tile vertical stacks (canopy/understory/ground) via `_get_guild_synergy_mult`.
 ## Superguilds are role-based 3×3 neighborhoods via `_get_synergies_for_cell`.
 ## Prefer adding small helpers in new scripts only if you are clearly splitting a subsystem — most logic still lives here.
@@ -14,6 +14,9 @@ signal workers_finished
 
 ## Matches grid generation: `y >= _map_h() - RIVER_ROW_COUNT` is river.
 const RIVER_ROW_COUNT: int = 3
+## Minimum Chebyshev gap between farmhouse footprint and stream tiles (matches placement buffer).
+const HOUSE_STREAM_CLEARANCE: int = 2
+const _HOUSE_SITE_BLOCKED_LANDS: Array[String] = ["river", "stream", "bridge"]
 
 func _map_w() -> int:
 	return FarmDataManager.map_width
@@ -25,6 +28,7 @@ func _map_h() -> int:
 
 ## Dug swales can store more moisture than normal soil (0–10); rain + capillary use this ceiling.
 const SWALE_MOISTURE_MAX := 25.0
+const _SHIFT_TOOLTIP_MAX_W := 340.0
 ## TileMap / A* / overlays: one cell = 200×200 world pixels (grep for 200 / 100 / 50).
 
 var vitals_label: Label
@@ -36,7 +40,20 @@ var active_lens: String = "normal"
 var overlay: Sprite2D
 var lens_texture: ImageTexture
 var door_menu: PopupMenu
-var farmer: Sprite2D
+var farmer: Node2D
+## Game-feel state: shimmer overlay for brimming swales, ambient rain, weather tint tween, hit-stop guard.
+var capillary_overlay: Node2D
+var data_view_panel_overlay: DataViewOverlayNode.DataViewPanelOverlayNode
+var data_view_overlay: DataViewOverlayNode
+var nutrient_transfer_overlay: NutrientTransferOverlayNode
+var _last_transfer_snapshot: Dictionary = {}
+var _turn_nutrient_flows: Array[Dictionary] = []
+var _sleep_wave_epoch: float = 0.0
+var _rain_particles: CPUParticles2D
+var _weather_tint_tween: Tween
+var _hit_stop_active: bool = false
+## Per-turn cap on stress tint animations so a struggling farm doesn't spawn hundreds of tweens.
+var _stress_anim_budget: int = 0
 var home_pos: Vector2i
 var is_sleeping: bool = false
 var hud_instance: Control
@@ -57,6 +74,18 @@ var forest_atlas_xs: Array[int] = []
 var industrial_atlas_xs: Array[int] = []
 var cultivated_atlas_xs: Array[int] = []
 var _next_custom_atlas_x: int = 19
+var _flora_tile_set: TileSet
+var ground_layer: TileMapLayer
+var understory_layer: TileMapLayer
+var canopy_layer: TileMapLayer
+
+const FLORA_LAYER_OFFSETS: Dictionary = {
+	"ground": Vector2.ZERO,
+	"understory": Vector2.ZERO,
+	"canopy": Vector2(-25, -35),
+}
+
+const FLORA_Y_SORT_ORIGIN := 200
 
 @onready var _save_manager: Node = get_node("/root/SaveManager")
 
@@ -118,6 +147,8 @@ var morning_triage_active: bool = false
 var overnight_events: Array = []
 
 @onready var main_camera: Camera2D = $"../Camera2D"
+## Whole-scene weather tint (scenes/world.tscn → WeatherModulate CanvasModulate).
+@onready var weather_modulate: CanvasModulate = get_node_or_null("../WeatherModulate")
 
 var additives_data = {
 	"bone_meal": {"name": "Bone Meal", "cost": 10, "n": 2.0, "m": -1.0, "color": "e1bee7"},
@@ -172,6 +203,7 @@ var _floating_text_pool: Array[Dictionary] = []
 var _floating_text_pool_rr: int = 0
 
 var forecast: Array[String] = []
+const FORECAST_HORIZON := 25
 var _last_night_weather: String = "clear"
 const GVCS_SOLAR_CHARGE_PER_PANEL := 10
 const GVCS_WATER_PER_BUTT := 20
@@ -298,15 +330,13 @@ func _land_is_infra(land: String) -> bool:
 
 
 ## Remove plant layer keys from grid data (used when stamping house / loading saves).
-func _clear_cell_plant_data(cell: Dictionary) -> void:
+func _clear_cell_plant_data(cell: Dictionary, death_reason: String = "") -> void:
 	for layer_key: String in ["canopy", "understory", "ground"]:
+		var plant_id := str(cell.get(layer_key, ""))
+		if death_reason != "" and plant_id != "":
+			FarmDataManager.record_plant_death(cell, layer_key, plant_id, death_reason)
 		cell[layer_key] = ""
-		var age_key: String = layer_key + "_age"
-		if cell.has(age_key):
-			cell.erase(age_key)
-		var yield_key: String = layer_key + "_yield"
-		if cell.has(yield_key):
-			cell.erase(yield_key)
+		FarmDataManager.erase_plant_tracking_keys(cell, layer_key)
 
 
 func _normalize_editor_land_cell(cell: Dictionary) -> void:
@@ -347,6 +377,45 @@ func _apply_farmhouse_from_editor_origin(origin: Vector2i) -> void:
 	home_pos = origin + Vector2i(1, 2)
 
 
+func _replacement_land_for_stream_clearance(x: int, y: int) -> String:
+	if x >= FarmDataManager.player_bounds_right:
+		return "cultivated"
+	return "wild"
+
+
+func _enforce_stream_clearance_around_house(gap: int = HOUSE_STREAM_CLEARANCE) -> void:
+	var house_cells: Array[Vector2i] = []
+	for x in range(_map_w()):
+		for y in range(_map_h()):
+			var land := str(FarmDataManager.grid_data[x][y].get("land", ""))
+			if land in ["house", "house_door"]:
+				house_cells.append(Vector2i(x, y))
+	if house_cells.is_empty():
+		return
+	for x in range(_map_w()):
+		for y in range(_map_h()):
+			var cell: Dictionary = FarmDataManager.grid_data[x][y]
+			if str(cell.get("land", "")) != "stream":
+				continue
+			var pos := Vector2i(x, y)
+			for h in house_cells:
+				if maxi(abs(pos.x - h.x), abs(pos.y - h.y)) <= gap:
+					var new_land := _replacement_land_for_stream_clearance(x, y)
+					cell["land"] = new_land
+					_v3_apply_default_ecology(cell, new_land)
+					break
+
+
+func _house_site_is_clear(sx: int, sy: int, hw: int, hh: int, buffer: int) -> bool:
+	for cx in range(sx - buffer, sx + hw + buffer):
+		for cy in range(sy - buffer, sy + hh + buffer):
+			if cx < 0 or cx >= _map_w() or cy < 0 or cy >= _map_h():
+				return false
+			if str(FarmDataManager.grid_data[cx][cy].get("land", "")) in _HOUSE_SITE_BLOCKED_LANDS:
+				return false
+	return true
+
+
 func _boot_from_custom_starting_grid() -> void:
 	for x in range(_map_w()):
 		for y in range(_map_h()):
@@ -360,6 +429,7 @@ func _boot_from_custom_starting_grid() -> void:
 
 	farmhouse_pos = home_pos
 	farmer.position = map_to_local(home_pos)
+	_enforce_stream_clearance_around_house()
 	_sanitize_plants_on_infra_cells()
 	update_visuals()
 	print("starting_map: booted from custom starting_grid.json (%dx%d)" % [_map_w(), _map_h()])
@@ -470,28 +540,22 @@ func _generate_procedural_grid_data() -> void:
 				var sy := center + dy
 				if sx < buffer or sx + hw + buffer >= _map_w() or sy < buffer or sy + hh + buffer >= _map_h():
 					continue
-				var valid := true
-				for cx in range(sx - buffer, sx + hw + buffer):
-					for cy in range(sy - buffer, sy + hh + buffer):
-						if FarmDataManager.grid_data[cx][cy]["land"] == "river":
-							valid = false
-							break
-					if not valid:
-						break
-				if valid:
-					for hx in range(hw):
-						for hy in range(hh):
-							var part := "house"
-							if hy == hh - 1 and hx == (hw >> 1):
-								part = "house_door"
-							var house_cell: Dictionary = FarmDataManager.grid_data[sx + hx][sy + hy]
-							house_cell["land"] = part
-							_clear_cell_plant_data(house_cell)
-							if part == "house_door":
-								home_pos = Vector2i(sx + hx, sy + hy)
-								farmer.position = map_to_local(home_pos)
-					house_placed = true
+				if not _house_site_is_clear(sx, sy, hw, hh, buffer):
+					continue
+				for hx in range(hw):
+					for hy in range(hh):
+						var part := "house"
+						if hy == hh - 1 and hx == (hw >> 1):
+							part = "house_door"
+						var house_cell: Dictionary = FarmDataManager.grid_data[sx + hx][sy + hy]
+						house_cell["land"] = part
+						_clear_cell_plant_data(house_cell)
+						if part == "house_door":
+							home_pos = Vector2i(sx + hx, sy + hy)
+							farmer.position = map_to_local(home_pos)
+				house_placed = true
 
+	_enforce_stream_clearance_around_house()
 	_sanitize_plants_on_infra_cells()
 	update_visuals()
 
@@ -636,6 +700,17 @@ func _apply_drone_pollinator(center: Vector2i) -> void:
 				spawn_floating_text("Buzz!", Color("ce93d8"), pos, "ecology")
 
 
+func _record_nutrient_flow(from_pos: Vector2i, to_pos: Vector2i, stat: String, amount: float) -> void:
+	if amount <= 0.0 or from_pos == to_pos:
+		return
+	_turn_nutrient_flows.append({
+		"from": from_pos,
+		"to": to_pos,
+		"stat": stat,
+		"amount": amount,
+	})
+
+
 func _apply_moisture_net_drip(center: Vector2i) -> void:
 	var offsets: Array[Vector2i] = [
 		Vector2i.ZERO,
@@ -649,6 +724,8 @@ func _apply_moisture_net_drip(center: Vector2i) -> void:
 		if str(ncell.get("land", "")) in ["road", "house", "house_door", "bridge", "river", "stream"]:
 			continue
 		ncell["moisture"] = clampf(float(ncell.get("moisture", 0.0)) + 1.0, 0.0, 10.0)
+		if off != Vector2i.ZERO:
+			_record_nutrient_flow(center, pos, "moisture", 1.0)
 
 
 func _apply_automated_watering(center: Vector2i) -> void:
@@ -699,7 +776,7 @@ func _apply_drone_harvest(center: Vector2i) -> void:
 			if str(p_data.get("lifecycle", "annual")) == "annual":
 				_remove_plant_layer(cell, layer)
 			else:
-				cell[age_key] = float(p_data.get("mature_turn", 2)) / 2.0
+				cell[age_key] = float(PlantGrowth.days_to_mature(p_data)) / 2.0
 			var beep := "Beep! +£%d" % payout if payout > 0 else "Beep!"
 			if payout <= 0 and not FarmDataManager.auto_sell and yield_amt > 0:
 				beep = "Beep! +%d" % yield_amt
@@ -732,19 +809,7 @@ func _clear_cell_pollination(cell: Dictionary) -> void:
 		cell.erase("is_pollinated")
 
 
-func _season_matches_flowering(current_season: String, flowering_seasons: Variant) -> bool:
-	var season_key := current_season.strip_edges().to_lower()
-	if season_key == "":
-		return false
-	if flowering_seasons is Array:
-		for fs in flowering_seasons:
-			if str(fs).strip_edges().to_lower() == season_key:
-				return true
-	return false
-
-
 func _apply_overnight_bee_pollination() -> void:
-	var current_season := FarmDataManager.current_season.to_lower()
 	for x in range(_map_w()):
 		if x % 16 == 0:
 			await get_tree().process_frame
@@ -766,10 +831,10 @@ func _apply_overnight_bee_pollination() -> void:
 						var p_id := str(target_cell[layer])
 						var plant_data: Dictionary = _get_plant_data(p_id)
 						var seasons: Variant = plant_data.get("flowering_seasons", [])
-						if not _season_matches_flowering(current_season, seasons):
+						if not FarmDataManager.flowering_season_matches(seasons):
 							continue
 						var age_key: String = layer + "_age"
-						var mature_turn := float(plant_data.get("mature_turn", 2.0))
+						var mature_turn := float(PlantGrowth.days_to_mature(plant_data))
 						if float(target_cell.get(age_key, 0.0)) < mature_turn * 0.5:
 							continue
 						target_cell["is_pollinated"] = true
@@ -796,19 +861,14 @@ func _mature_plant_on_cell(cell: Dictionary) -> Dictionary:
 		var p_data: Dictionary = preload("res://data/data_plants.gd").get_plant_data(p_id)
 		if p_data.is_empty():
 			continue
-		if float(cell.get(age_key, 0)) >= float(p_data.get("mature_turn", 2)):
+		if float(cell.get(age_key, 0)) >= float(PlantGrowth.days_to_mature(p_data)):
 			return {"layer": layer, "id": p_id, "data": p_data, "age_key": age_key}
 	return {}
 
 
 func _remove_plant_layer(cell: Dictionary, layer: String) -> void:
 	cell[layer] = ""
-	var age_key: String = layer + "_age"
-	if cell.has(age_key):
-		cell.erase(age_key)
-	var yield_key: String = layer + "_yield"
-	if cell.has(yield_key):
-		cell.erase(yield_key)
+	FarmDataManager.erase_plant_tracking_keys(cell, layer)
 
 
 func _plant_biomass_score(p_data: Dictionary) -> float:
@@ -1001,6 +1061,7 @@ func _ready() -> void:
 	new_tile_set.add_source(source, 0)
 	tile_set = new_tile_set
 	_next_custom_atlas_x = current_atlas_x
+	_setup_flora_layers()
 
 	tile_highlight = ColorRect.new()
 	tile_highlight.size = Vector2(tile_set.tile_size)
@@ -1009,25 +1070,14 @@ func _ready() -> void:
 	tile_highlight.z_index = 50
 	add_child(tile_highlight)
 
-	# Dynamically generate the vertical rendering layers
-	for layer_name in ["GroundLayer", "UnderstoryLayer", "CanopyLayer", "StructureLayer"]:
-		if not has_node(layer_name):
-			var new_layer = TileMapLayer.new()
-			new_layer.name = layer_name
-			new_layer.tile_set = tile_set # Inherit the tileset from the main map
-			new_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-
-			# Ensure they stack visually from ground up to structures
-			if layer_name == "GroundLayer":
-				new_layer.z_index = 1
-			elif layer_name == "UnderstoryLayer":
-				new_layer.z_index = 2
-			elif layer_name == "CanopyLayer":
-				new_layer.z_index = 3
-			elif layer_name == "StructureLayer":
-				new_layer.z_index = 4
-
-			add_child(new_layer)
+	# StructureLayer stays on terrain tileset; flora layers live on World (siblings).
+	if not has_node("StructureLayer"):
+		var struct_layer := TileMapLayer.new()
+		struct_layer.name = "StructureLayer"
+		struct_layer.tile_set = tile_set
+		struct_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		struct_layer.z_index = 4
+		add_child(struct_layer)
 
 	# Data lenses: Sprite2D 128² base → overlay.scale Vector2(200, 200) per cell (no set_cell_modulate / no per-tile tint loop).
 	overlay = Sprite2D.new()
@@ -1039,19 +1089,37 @@ func _ready() -> void:
 	overlay.hide()
 	add_child(overlay)
 
-	farmer = Sprite2D.new()
+	# Shimmering "brimming swale" overlay — tiles whose moisture exceeds the normal 0–10 ceiling.
+	capillary_overlay = CapillaryOverlayNode.new()
+	capillary_overlay.name = "CapillaryOverlay"
+	capillary_overlay.map_ref = self
+	capillary_overlay.z_index = 5
+	add_child(capillary_overlay)
+
+	data_view_panel_overlay = DataViewOverlayNode.DataViewPanelOverlayNode.new()
+	data_view_panel_overlay.name = "DataViewPanelOverlay"
+	data_view_panel_overlay.map_ref = self
+	data_view_panel_overlay.z_index = 6
+	data_view_panel_overlay.hide()
+	add_child(data_view_panel_overlay)
+
+	nutrient_transfer_overlay = NutrientTransferOverlayNode.new()
+	nutrient_transfer_overlay.name = "NutrientTransferOverlay"
+	nutrient_transfer_overlay.map_ref = self
+	nutrient_transfer_overlay.z_index = 6 # Rim corridor: above map, below bar charts (7)
+	add_child(nutrient_transfer_overlay)
+
+	data_view_overlay = DataViewOverlayNode.new()
+	data_view_overlay.name = "DataViewOverlay"
+	data_view_overlay.map_ref = self
+	data_view_overlay.z_index = 7
+	data_view_overlay.hide()
+	add_child(data_view_overlay)
+	data_view_overlay.transfer_overlay = nutrient_transfer_overlay
+
+	farmer = _create_character_visual(FarmDataManager.get_active_worker())
 	farmer.name = "Farmer"
-	farmer.centered = true
-	# Load the actual sprite instead of creating a square image
-	var active_w = FarmDataManager.get_active_worker()
-	var tex_path = active_w.get("sprite", "res://icon.svg")
-	if ResourceLoader.exists(tex_path):
-		farmer.texture = load(tex_path)
-	else:
-		farmer.texture = preload("res://icon.svg")
-	farmer.z_index = 10
-	farmer.scale = Vector2(1.5, 1.5)
-	farmer.offset = Vector2(0, -60)
+	farmer.position = map_to_local(home_pos)
 	add_child(farmer)
 
 	# 3. Generate Grid Data
@@ -1086,6 +1154,8 @@ func _ready() -> void:
 	if hud_instance.has_signal("produce_action_requested"):
 		hud_instance.produce_action_requested.connect(process_produce_action)
 	hud_instance.lens_selected.connect(_on_hud_lens_selected)
+	if hud_instance.has_signal("quick_tool_selected"):
+		hud_instance.quick_tool_selected.connect(_on_quick_tool_selected)
 	if hud_instance.has_signal("inventory_selected"):
 		hud_instance.inventory_selected.connect(_on_hud_inventory_selected)
 	if hud_instance.has_signal("undo_pressed"):
@@ -1104,6 +1174,10 @@ func _ready() -> void:
 			get_tree().paused = false
 			get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 		)
+
+	turn_stepped.connect(func(_turn: int, _energy: int, _money: int) -> void:
+		_save_manager.mark_session_dirty()
+	)
 
 	narrative_ui = preload("res://scripts/ui_narrative_popup.gd").new()
 	narrative_ui.hide()
@@ -1165,7 +1239,9 @@ func _ready() -> void:
 	tooltip_label = RichTextLabel.new()
 	tooltip_label.fit_content = true
 	tooltip_label.bbcode_enabled = true
-	tooltip_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	tooltip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tooltip_label.custom_minimum_size = Vector2(_SHIFT_TOOLTIP_MAX_W, 0)
+	tooltip_label.scroll_active = false
 	tooltip_panel.add_child(tooltip_label)
 	tooltip_canvas.add_child(tooltip_panel)
 	tooltip_panel.hide()
@@ -1316,11 +1392,8 @@ void fragment() {
 	_setup_floating_text_pool()
 
 	# --- INITIALIZE FORECAST ---
-	# Five-day queue: calendar days current_turn … current_turn+4. Scripted rows in data/story_weather.csv (DataScenario).
-	forecast.clear()
-	for i in range(5):
-		var target_day: int = FarmDataManager.current_turn + i
-		forecast.append(_get_weather_for_day(target_day))
+	# Twenty-five-day queue: calendar days current_turn … current_turn+24.
+	_refill_forecast()
 
 	# --- THE REINCARNATION SCREEN ---
 	death_panel = PanelContainer.new()
@@ -1365,22 +1438,25 @@ void fragment() {
 		var sp_clear = hud_instance.get_node_or_null("CanvasLayer/SeedPicker")
 		if sp_clear:
 			sp_clear.allowed_seed_ids.clear()
-	elif not MetaManager.dev_mode:
-		var sp = hud_instance.get_node_or_null("CanvasLayer/SeedPicker")
-		if sp:
-			sp.allowed_seed_ids.clear()
-		call_deferred("_sync_hud_money")
-		if FarmDataManager.active_campaign_id == "wormfood":
-			call_deferred("_trigger_intro_dialogue")
-		elif FarmDataManager.active_campaign_id == "tutorial":
-			call_deferred("_trigger_intro_dialogue", "tut_day_1")
 	else:
-		var sp_dev = hud_instance.get_node_or_null("CanvasLayer/SeedPicker")
-		if sp_dev:
-			sp_dev.allowed_seed_ids.clear()
+		_save_manager.mark_session_dirty()
+		if not MetaManager.dev_mode:
+			var sp = hud_instance.get_node_or_null("CanvasLayer/SeedPicker")
+			if sp:
+				sp.allowed_seed_ids.clear()
+			call_deferred("_sync_hud_money")
+			if FarmDataManager.active_campaign_id == "wormfood":
+				call_deferred("_trigger_intro_dialogue")
+			elif FarmDataManager.active_campaign_id == "tutorial":
+				call_deferred("_trigger_intro_dialogue", "tut_day_1")
+		else:
+			var sp_dev = hud_instance.get_node_or_null("CanvasLayer/SeedPicker")
+			if sp_dev:
+				sp_dev.allowed_seed_ids.clear()
 
 	_init_farm_astar()
 	_sync_hud_status()
+	_refresh_season_display()
 	call_deferred("_snap_camera_to_farmhouse")
 
 
@@ -1747,7 +1823,32 @@ func _hide_hover_for_narrative() -> void:
 		tooltip_panel.hide()
 
 
+func _shift_tooltip_position(mouse_vp: Vector2, panel: Control) -> Vector2:
+	const MARGIN := 14.0
+	const GAP := Vector2(22.0, 22.0)
+
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	var panel_size: Vector2 = panel.size
+	if panel_size.x < 4.0 or panel_size.y < 4.0:
+		panel_size = panel.get_combined_minimum_size()
+	if panel_size.x < 4.0 or panel_size.y < 4.0:
+		panel_size = Vector2(_SHIFT_TOOLTIP_MAX_W, 96.0)
+
+	# Default: below-right of cursor; flip axes when that would leave the viewport.
+	var pos := mouse_vp + GAP
+	if pos.x + panel_size.x > vp_size.x - MARGIN:
+		pos.x = mouse_vp.x - panel_size.x - GAP.x
+	if pos.y + panel_size.y > vp_size.y - MARGIN:
+		pos.y = mouse_vp.y - panel_size.y - GAP.y
+
+	pos.x = clampf(pos.x, MARGIN, maxf(MARGIN, vp_size.x - panel_size.x - MARGIN))
+	pos.y = clampf(pos.y, MARGIN, maxf(MARGIN, vp_size.y - panel_size.y - MARGIN))
+	return pos
+
+
 func _trigger_intro_dialogue(dialogue_id: String = "intro") -> void:
+	if MetaManager.dev_mode:
+		return
 	if not is_instance_valid(narrative_ui):
 		return
 	_hide_hover_for_narrative()
@@ -1887,6 +1988,21 @@ func _on_door_menu_pressed(id: int) -> void:
 		trigger_sleep()
 
 
+func _on_quick_tool_selected(tool_id: String) -> void:
+	match tool_id:
+		"inspect":
+			set_current_tool("")
+		"rotovate":
+			set_current_tool("rotovate")
+		"water":
+			set_current_tool("water_tile")
+		"seeds":
+			set_current_tool("plant", active_seed)
+			var sp = hud_instance.get_node_or_null("CanvasLayer/SeedPicker") if is_instance_valid(hud_instance) else null
+			if sp and sp.has_method("populate_and_show"):
+				sp.populate_and_show()
+
+
 func _on_hud_action_selected(item: String) -> void:
 	if item == "open_produce_menu":
 		if hud_instance and hud_instance.has_method("refresh_produce_ui"):
@@ -1942,6 +2058,10 @@ func _on_hud_lens_selected(item: String) -> void:
 			active_lens = "design"
 		"Guild Vision":
 			active_lens = "guild"
+		"soil_data", "Soil Data View":
+			active_lens = "soil_data"
+		"plant_data", "Plant Data View":
+			active_lens = "plant_data"
 		"energy", "Energy Vision":
 			active_lens = "energy"
 	_refresh_all_visuals()
@@ -1951,41 +2071,44 @@ func _on_hud_inventory_selected(_item: String) -> void:
 	pass
 
 
+func _refill_forecast() -> void:
+	forecast.clear()
+	for i in range(FORECAST_HORIZON):
+		forecast.append(_get_weather_for_day(FarmDataManager.current_turn + i))
+
+
+func _ensure_forecast_tail() -> void:
+	while forecast.size() < FORECAST_HORIZON:
+		var target_day: int = FarmDataManager.current_turn + forecast.size()
+		forecast.append(_get_weather_for_day(target_day))
+
+
 func _refresh_live_right_panel() -> void:
 	if not is_instance_valid(hud_instance):
-		return
-	var fc: RichTextLabel = hud_instance.get_node_or_null(
-		"CanvasLayer/InfoDock/DockMargin/DockScroll/DockBody/Forecast_Events_Content"
-	) as RichTextLabel
-	if not is_instance_valid(fc):
 		return
 
 	unread_mail = false
 	if hud_instance.has_method("apply_mail_indicator"):
 		hud_instance.apply_mail_indicator(false)
 
-	var bbcode = ""
+	if hud_instance.has_method("refresh_info_dock"):
+		hud_instance.refresh_info_dock(forecast)
 
-	# 1. WEATHER FORECAST
-	bbcode += "[b]5-Day Forecast[/b]\n"
-	for i in range(forecast.size()):
-		var w_id = forecast[i]
-		if not weather_types.has(w_id):
-			continue
-		var w_name = weather_types[w_id]["name"]
-		var w_col = weather_types[w_id]["color"]
-		var day_label = "Tomorrow:" if i == 0 else "Day +" + str(i + 1) + ":"
-		bbcode += "[color=#aaaaaa]%s[/color] [color=#%s]%s[/color]\n" % [day_label, w_col, w_name]
+	var fc: RichTextLabel = hud_instance.get_node_or_null(
+		"CanvasLayer/InfoDock/DockMargin/DockScroll/DockBody/Forecast_Events_Content"
+	) as RichTextLabel
+	if not is_instance_valid(fc):
+		return
 
-	# 2. INBOX & EVENTS
-	bbcode += "\n[b]Inbox & Events[/b]\n"
+	var bbcode := ""
+
+	bbcode += "[b]Inbox & Events[/b]\n"
 	if inbox_messages.is_empty():
 		bbcode += "[color=#888888]No recent events.[/color]\n"
 	else:
 		for m in inbox_messages:
 			bbcode += m + "\n"
 
-	# 3. ECONOMY & META
 	bbcode += "\n[b]Status[/b]\n"
 	bbcode += "Research Insight: %d\n" % MetaManager.current_insight
 	bbcode += "[color=#888888]Market prices for produce remain stable.[/color]"
@@ -2079,13 +2202,105 @@ func _refresh_minimap() -> void:
 		hud_instance.update_minimap(tex)
 
 
+func _world_root() -> Node:
+	return get_parent() if get_parent() != null else self
+
+
+func _get_flora_layer(layer_key: String) -> TileMapLayer:
+	match layer_key:
+		"ground":
+			return ground_layer
+		"understory":
+			return understory_layer
+		"canopy":
+			return canopy_layer
+		_:
+			return null
+
+
+func _build_flora_tile_set() -> TileSet:
+	var meta := PlantGrowth.flora_atlas_meta()
+	var cols := int(meta.get("columns", 14))
+	var rows := int(meta.get("rows", 15))
+	var tile_sz := int(meta.get("tile_size", 200))
+	var atlas_path := str(meta.get("atlas_path", "res://assets/base/sprites/atlas/flora_atlas.png"))
+	var tex := load(atlas_path) as Texture2D
+	if tex == null:
+		push_warning("starting_map: missing flora atlas at %s — run bake_flora_atlas.gd" % atlas_path)
+		return null
+	var source := TileSetAtlasSource.new()
+	source.texture = tex
+	source.texture_region_size = Vector2i(tile_sz, tile_sz)
+	for y in range(rows):
+		for x in range(cols):
+			source.create_tile(Vector2i(x, y))
+	var ts := TileSet.new()
+	ts.tile_size = Vector2i(tile_sz, tile_sz)
+	ts.add_source(source, 0)
+	return ts
+
+
+func _setup_flora_layers() -> void:
+	_flora_tile_set = _build_flora_tile_set()
+	if _flora_tile_set == null:
+		return
+	var world := _world_root()
+	ground_layer = get_node_or_null("GroundLayer") as TileMapLayer
+	understory_layer = get_node_or_null("UnderstoryLayer") as TileMapLayer
+	canopy_layer = get_node_or_null("CanopyLayer") as TileMapLayer
+	if ground_layer == null:
+		ground_layer = world.get_node_or_null("GroundLayer") as TileMapLayer
+	if understory_layer == null:
+		understory_layer = world.get_node_or_null("UnderstoryLayer") as TileMapLayer
+	if canopy_layer == null:
+		canopy_layer = world.get_node_or_null("CanopyLayer") as TileMapLayer
+	for layer_key in ["ground", "understory", "canopy"]:
+		var layer := _get_flora_layer(layer_key)
+		if layer == null:
+			push_warning("starting_map: missing %sLayer on World scene" % layer_key.capitalize())
+			continue
+		# Flora layers must be siblings of terrain or children of this map — never share one layer.
+		if layer.get_parent() != self and layer.get_parent() == world:
+			layer.reparent(self, true)
+		layer.position = FLORA_LAYER_OFFSETS.get(layer_key, Vector2.ZERO)
+		layer.z_index = {"understory": 1, "canopy": 2, "ground": 3}.get(layer_key, 1)
+		layer.y_sort_enabled = true
+		layer.y_sort_origin = FLORA_Y_SORT_ORIGIN
+		layer.tile_set = _flora_tile_set
+		layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	y_sort_enabled = true
+	y_sort_origin = FLORA_Y_SORT_ORIGIN
+	var world_root := _world_root()
+	if world_root is Node2D:
+		(world_root as Node2D).y_sort_enabled = true
+
+
+func _paint_flora_cell(pos: Vector2i, visual_cell: Dictionary) -> void:
+	for layer_key in ["ground", "understory", "canopy"]:
+		var layer_node := _get_flora_layer(layer_key)
+		if layer_node == null:
+			continue
+		if _cell_str_nonempty(visual_cell, layer_key):
+			var p_id: String = str(visual_cell[layer_key])
+			var age_key := "%s_age" % layer_key
+			var plant_age := float(visual_cell.get(age_key, 0.0))
+			var growth_stage := _get_plant_growth_stage(p_id, plant_age)
+			var tile_coord := PlantGrowth.flora_atlas_coord(p_id, growth_stage)
+			if tile_coord.x >= 0:
+				layer_node.set_cell(pos, 0, tile_coord)
+			else:
+				layer_node.erase_cell(pos)
+		else:
+			layer_node.erase_cell(pos)
+
+
 func _erase_plant_layers_at(pos: Vector2i, clear_ground: bool) -> void:
 	for layer_key in ["canopy", "understory", "ground"]:
 		if not clear_ground and layer_key == "ground":
 			continue
-		var layer_node = get_node_or_null(layer_key.capitalize() + "Layer")
+		var layer_node := _get_flora_layer(layer_key)
 		if layer_node:
-			layer_node.set_cell(pos, -1, Vector2i(-1, -1))
+			layer_node.erase_cell(pos)
 
 
 func _get_worker_data(w_id: String) -> Dictionary:
@@ -2101,7 +2316,7 @@ func _pos_has_queued_plant_clear(pos: Vector2i) -> bool:
 	for act in FarmDataManager.action_queue:
 		if act.get("pos", Vector2i(-999999, -999999)) != pos:
 			continue
-		if str(act.get("action", "")) in ["rotovate", "hoe"]:
+		if str(act.get("action", "")) in ["rotovate", "hoe", "dig_swale"]:
 			return true
 	return false
 
@@ -2158,6 +2373,7 @@ func _get_planned_cell_state(pos: Vector2i, cell: Dictionary) -> Dictionary:
 				state["has_path"] = true
 			"dig_swale":
 				state["land"] = "swale"
+				_clear_cell_plant_data(state)
 			"build_mound":
 				state["land"] = "mound"
 			"scythe":
@@ -2353,6 +2569,9 @@ func _update_single_tile_visual(pos: Vector2i) -> void:
 	var object_entries: Dictionary = preload("res://data/data_objects.gd").ENTRIES
 	# StructureLayer: draw fixtures only when `structure` is a string id (see grid overload doc above).
 
+	if is_instance_valid(capillary_overlay):
+		capillary_overlay.set_cell_moisture(pos, _capillary_shimmer_moisture(cell))
+
 	var planned_state = _get_planned_cell_state(pos, cell)
 	# Terrain atlas: ground truth only — queued rotovate/water previews draw on `preview_overlay`.
 	var land: String = str(cell.get("land", "wild"))
@@ -2389,18 +2608,7 @@ func _update_single_tile_visual(pos: Vector2i) -> void:
 		return
 
 	set_cell(pos, 0, Vector2i(_land_to_atlas_x(land, pos), 0))
-
-	for layer_key in ["canopy", "understory", "ground"]:
-		var layer_node_name = layer_key.capitalize() + "Layer"
-		var layer_node = get_node_or_null(layer_node_name)
-
-		if layer_node:
-			if _cell_str_nonempty(visual_cell, layer_key):
-				var p_id: String = str(visual_cell[layer_key])
-				var atlas_x: int = _resolve_plant_atlas_x(p_id)
-				layer_node.set_cell(pos, 0, Vector2i(atlas_x, 0))
-			else:
-				layer_node.set_cell(pos, -1, Vector2i(-1, -1))
+	_paint_flora_cell(pos, visual_cell)
 
 	if l_struct:
 		if _cell_has_building_structure(cell):
@@ -2416,19 +2624,12 @@ func _update_single_tile_visual(pos: Vector2i) -> void:
 	_update_astar_cell(pos)
 
 
-func _resolve_plant_atlas_x(plant_id: String) -> int:
-	var pd := preload("res://data/data_plants.gd")
-	var row: Dictionary = pd.get_plant_data(plant_id)
-	if row.is_empty():
-		return 0
-	if row.has("custom_atlas_x"):
-		return int(row["custom_atlas_x"])
-	var custom_path := str(row.get("custom_sprite_path", ""))
-	if custom_path != "" and FileAccess.file_exists(custom_path):
-		var ax := register_custom_plant_sprite(plant_id, custom_path)
-		if ax >= 0:
-			return ax
-	return int(row.get("atlas_x", 0))
+func _get_plant_growth_stage(plant_id: String, current_age: float) -> int:
+	return PlantGrowth.growth_stage(plant_id, current_age)
+
+
+func _get_stage_multipliers(stage: int) -> Dictionary:
+	return PlantGrowth.stage_multipliers(stage)
 
 
 const USER_PLANT_SPRITE_DIR := "user://databases/sprites/"
@@ -2557,6 +2758,15 @@ func update_visuals() -> void:
 			maintenance_bubble_overlay.visible = true
 			maintenance_bubble_overlay.queue_redraw()
 		return
+	elif _is_data_lens():
+		if is_instance_valid(overlay):
+			overlay.hide()
+		if is_instance_valid(data_view_panel_overlay):
+			data_view_panel_overlay.queue_redraw()
+		if is_instance_valid(data_view_overlay):
+			data_view_overlay.queue_redraw()
+		if is_instance_valid(nutrient_transfer_overlay):
+			nutrient_transfer_overlay.queue_redraw()
 	else:
 		if active_lens in ["moisture", "nitrogen", "growth"] and is_instance_valid(overlay):
 			overlay.show()
@@ -2566,11 +2776,17 @@ func update_visuals() -> void:
 	var object_entries: Dictionary = preload("res://data/data_objects.gd").ENTRIES
 	# StructureLayer uses `_cell_has_building_structure` below — same overload as single-tile refresh.
 
+	if is_instance_valid(capillary_overlay):
+		capillary_overlay.wet_cells.clear()
+
 	for x in range(_map_w()):
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 			var pos := Vector2i(x, y)
 			var visual_cell: Dictionary = _get_visual_cell(pos, cell)
+
+			if is_instance_valid(capillary_overlay):
+				capillary_overlay.set_cell_moisture(pos, _capillary_shimmer_moisture(cell))
 
 			# Path overlay still uses planned queue/blueprints; land atlas uses grid only (queue hints on preview overlay).
 			var planned_state = _get_planned_cell_state(pos, cell)
@@ -2607,19 +2823,7 @@ func update_visuals() -> void:
 				continue
 
 			set_cell(pos, 0, Vector2i(_land_to_atlas_x(land, pos), 0))
-
-			# Draw Plants across all 3 layers (respect queued rotovate clearing)
-			for layer_key in ["canopy", "understory", "ground"]:
-				var layer_node_name = layer_key.capitalize() + "Layer"
-				var layer_node = get_node_or_null(layer_node_name)
-
-				if layer_node:
-					if _cell_str_nonempty(visual_cell, layer_key):
-						var p_id: String = str(visual_cell[layer_key])
-						var atlas_x: int = _resolve_plant_atlas_x(p_id)
-						layer_node.set_cell(pos, 0, Vector2i(atlas_x, 0))
-					else:
-						layer_node.set_cell(pos, -1, Vector2i(-1, -1))
+			_paint_flora_cell(pos, visual_cell)
 
 			if l_struct:
 				if _cell_has_building_structure(cell):
@@ -2653,7 +2857,24 @@ func update_visuals() -> void:
 			guild_overlay.queue_redraw()
 
 
+func _is_data_lens() -> bool:
+	return active_lens in ["soil_data", "plant_data"]
+
+
 func apply_lens() -> void:
+	if is_instance_valid(data_view_panel_overlay):
+		data_view_panel_overlay.visible = _is_data_lens()
+		if _is_data_lens():
+			data_view_panel_overlay.queue_redraw()
+	if is_instance_valid(data_view_overlay):
+		data_view_overlay.visible = _is_data_lens()
+		if _is_data_lens():
+			data_view_overlay.queue_redraw()
+	if is_instance_valid(nutrient_transfer_overlay):
+		nutrient_transfer_overlay.visible = _is_data_lens()
+		if _is_data_lens():
+			nutrient_transfer_overlay.queue_redraw()
+
 	if is_instance_valid(energy_blackout):
 		if active_lens == "energy":
 			energy_blackout.show()
@@ -2662,6 +2883,19 @@ func apply_lens() -> void:
 
 	if is_instance_valid(greyscale_overlay):
 		greyscale_overlay.visible = (active_lens == "guild")
+
+	if _is_data_lens():
+		if is_instance_valid(hud_instance) and hud_instance.get("design_toolbar"):
+			hud_instance.design_toolbar.visible = false
+		if is_instance_valid(overlay):
+			overlay.hide()
+		if is_instance_valid(energy_zone_overlay):
+			energy_zone_overlay.visible = false
+		if is_instance_valid(energy_cursor_overlay):
+			energy_cursor_overlay.visible = false
+		if is_instance_valid(maintenance_bubble_overlay):
+			maintenance_bubble_overlay.visible = false
+		return
 
 	if active_lens == "normal" or active_lens == "design":
 		if is_instance_valid(hud_instance) and hud_instance.get("design_toolbar"):
@@ -3075,14 +3309,15 @@ func _attempt_grid_action(mouse_pos: Vector2) -> void:
 	var y := grid_pos.y
 
 	if active_tool == "":
-		if hud_instance and hud_instance.inspector_panel:
+		if hud_instance and hud_instance.has_method("show_tile"):
 			var cell0 = FarmDataManager.grid_data[grid_pos.x][grid_pos.y]
-			hud_instance.inspector_label.text = "[center][b]Tile Data[/b][/center]\n" + _get_soil_description(cell0)
-			var noise = FastNoiseLite.new()
-			noise.seed = x * 1000 + y
-			var img = noise.get_image(200, 200)
-			hud_instance.inspector_icon.texture = ImageTexture.create_from_image(img)
-			hud_instance.inspector_panel.show()
+			var a_x0 := _land_to_atlas_x(cell0["land"], grid_pos)
+			var pic0 := AtlasTexture.new()
+			var src_atlas0 := tile_set.get_source(0) as TileSetAtlasSource
+			if src_atlas0:
+				pic0.atlas = src_atlas0.texture
+			pic0.region = Rect2(a_x0 * 200, 0, 200, 200)
+			hud_instance.show_tile(x, y, cell0, pic0)
 		return
 
 	if x <= FarmDataManager.player_bounds_left or x >= FarmDataManager.player_bounds_right:
@@ -3548,11 +3783,22 @@ func _attempt_grid_action(mouse_pos: Vector2) -> void:
 		set_cell(Vector2i(x, y), 0, Vector2i(11, 0))
 	elif active_tool != "additive":
 		set_cell(Vector2i(x, y), 0, Vector2i(_land_to_atlas_x(preview_land, Vector2i(x, y)), 0))
-	if active_tool == "rotovate" or active_tool == "e_tiller":
+	if active_tool == "rotovate" or active_tool == "e_tiller" or active_tool == "dig_swale":
 		_erase_plant_layers_at(Vector2i(x, y), true)
 	# ----------------------------------------
 
-	if active_tool == "rotovate" or active_tool == "e_tiller" or active_tool == "build_path" or active_tool == "build":
+	if active_tool == "rotovate" or active_tool == "e_tiller":
+		RadioManager.play_action_note("build")
+		_spawn_dirt_particles(map_to_local(Vector2i(x, y)))
+		if active_tool == "e_tiller":
+			_shake_camera(14.0, 0.3)
+		else:
+			_shake_camera(6.0, 0.2)
+	elif active_tool == "dig_swale" or active_tool == "build_mound":
+		RadioManager.play_action_note("build")
+		_spawn_dirt_particles(map_to_local(Vector2i(x, y)))
+		_shake_camera(10.0 if active_tool == "dig_swale" else 8.0, 0.25)
+	elif active_tool == "build_path" or active_tool == "build":
 		RadioManager.play_action_note("build")
 		_spawn_click_particles(map_to_local(Vector2i(x, y)), Color("8d6e63")) # Dust/Dirt colour
 	elif active_tool == "plant" and active_seed != "":
@@ -3560,7 +3806,7 @@ func _attempt_grid_action(mouse_pos: Vector2) -> void:
 		_spawn_click_particles(map_to_local(Vector2i(x, y)), Color("a5d6a7")) # Fresh green colour
 	elif active_tool == "water_tile" or active_tool == "hosepipe":
 		RadioManager.play_action_note("plant")
-		_spawn_click_particles(map_to_local(Vector2i(x, y)), Color("64b5f6"))
+		_spawn_water_particles(map_to_local(Vector2i(x, y)))
 	elif active_tool == "apply_tea":
 		if RadioManager.has_method("play_action_note"):
 			RadioManager.play_action_note("build")
@@ -3585,6 +3831,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_Q:
 		set_current_tool("")
 		print("Tool cleared. Inspection mode active.")
+		return
+
+	# --- QUICK-SELECT WHEEL (hold Tab, release over an option to equip) ---
+	if event is InputEventKey and event.keycode == KEY_TAB and not event.is_echo():
+		if is_instance_valid(hud_instance):
+			if event.pressed and hud_instance.has_method("show_quick_wheel"):
+				hud_instance.show_quick_wheel(get_viewport().get_mouse_position())
+			elif not event.pressed and hud_instance.has_method("commit_quick_wheel"):
+				hud_instance.commit_quick_wheel()
+		get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventKey and event.pressed:
@@ -3820,15 +4076,16 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(hud_instance) and hud_instance.has_method("apply_mail_indicator"):
 		hud_instance.apply_mail_indicator(unread_mail)
 
-	# Sync the physical farmer sprite to the Active Worker's texture
+	# Sync the physical farmer sprite to the Active Worker (static sprites only).
 	if not is_sleeping:
 		var active_w = FarmDataManager.get_active_worker()
-		var tex_path = active_w.get("sprite", "res://icon.svg")
-		if is_instance_valid(farmer) and ResourceLoader.exists(tex_path):
-			var expected_tex = load(tex_path)
-			if farmer.texture != expected_tex:
-				farmer.texture = expected_tex
-				farmer.modulate = Color.WHITE # Ensure no lingering tint is applied
+		if farmer is Sprite2D:
+			var tex_path = active_w.get("sprite", "res://icon.svg")
+			if ResourceLoader.exists(tex_path):
+				var expected_tex = load(tex_path)
+				if farmer.texture != expected_tex:
+					farmer.texture = expected_tex
+					farmer.modulate = Color.WHITE
 
 	var skip_tile_hover := false
 	if is_instance_valid(hud_instance) and hud_instance.has_method("is_blocking_ui_open"):
@@ -3891,8 +4148,6 @@ func _process(_delta: float) -> void:
 		if tooltip_panel and tooltip_label:
 			# ONLY show the tooltip if holding SHIFT and the mouse is valid
 			if Input.is_key_pressed(KEY_SHIFT):
-				tooltip_panel.position = get_viewport().get_mouse_position() + Vector2(25, 25)
-
 				if grid_pos.x >= 0 and grid_pos.x < _map_w() and grid_pos.y >= 0 and grid_pos.y < _map_w():
 					var cell: Dictionary = FarmDataManager.grid_data[grid_pos.x][grid_pos.y]
 					var text := "[b]Tile (%d, %d)[/b]\n" % [grid_pos.x, grid_pos.y]
@@ -3900,12 +4155,22 @@ func _process(_delta: float) -> void:
 					text += _get_soil_description(cell) + "\n"
 
 					var plants: Array[String] = []
-					if _cell_str_nonempty(cell, "canopy"):
-						plants.append("[color=#a5d6a7]Canopy:[/color] " + str(cell.get("canopy", "")).capitalize())
-					if _cell_str_nonempty(cell, "understory"):
-						plants.append("[color=#ffe082]Under:[/color] " + str(cell.get("understory", "")).capitalize())
-					if _cell_str_nonempty(cell, "ground"):
-						plants.append("[color=#80deea]Ground:[/color] " + str(cell.get("ground", "")).capitalize())
+					for layer_key in ["canopy", "understory", "ground"]:
+						if not _cell_str_nonempty(cell, layer_key):
+							continue
+						var p_id := str(cell.get(layer_key, ""))
+						var layer_color := {"canopy": "#a5d6a7", "understory": "#ffe082", "ground": "#80deea"}
+						var layer_short := {"canopy": "Canopy", "understory": "Under", "ground": "Ground"}
+						var plant_age := float(cell.get("%s_age" % layer_key, 0.0))
+						var stage_name := PlantGrowth.stage_label(_get_plant_growth_stage(p_id, plant_age))
+						plants.append(
+							"[color=%s]%s:[/color] %s [i](Stage: %s)[/i]" % [
+								layer_color.get(layer_key, "#ffffff"),
+								layer_short.get(layer_key, layer_key.capitalize()),
+								p_id.capitalize(),
+								stage_name,
+							]
+						)
 
 					if plants.size() > 0:
 						text += "---\n"
@@ -3913,6 +4178,9 @@ func _process(_delta: float) -> void:
 							if i > 0:
 								text += "\n"
 							text += plants[i]
+						text += PlantNutrientForecast.format_shift_tooltip_section(
+							PlantNutrientForecast.compute(cell)
+						)
 
 					# Tooltip: show fixture name only for string ids; hide numeric soil `structure` (overload header).
 					if _cell_has_building_structure(cell):
@@ -3959,7 +4227,19 @@ func _process(_delta: float) -> void:
 						text += "\n\n[color=#%s][b]📝 Note:[/b][/color]\n%s" % [note_data["color"], note_data["text"]]
 
 					tooltip_label.text = text
+					tooltip_label.size.x = _SHIFT_TOOLTIP_MAX_W
 					tooltip_panel.show()
+					tooltip_label.reset_size()
+					tooltip_panel.reset_size()
+
+					var mouse_vp: Vector2 = get_viewport().get_mouse_position()
+					var tip_target: Vector2 = _shift_tooltip_position(mouse_vp, tooltip_panel)
+					if tooltip_panel.visible and tooltip_panel.position.distance_squared_to(tip_target) > 1.0:
+						tooltip_panel.position = tooltip_panel.position.lerp(
+							tip_target, minf(1.0, 15.0 * _delta)
+						)
+					else:
+						tooltip_panel.position = tip_target
 				else:
 					tooltip_panel.hide()
 			else:
@@ -4181,12 +4461,10 @@ func redo_action() -> void:
 
 ## Updates season/year labels only. V3 ecology no longer applies a global moisture modifier each turn.
 func _refresh_season_display() -> void:
-	var year = int((FarmDataManager.current_turn - 1) / 48.0) + 1
-	var season_idx = int((FarmDataManager.current_turn - 1) / 12.0) % 4
-	var seasons = ["Spring", "Summer", "Autumn", "Winter"]
-	FarmDataManager.current_season = seasons[season_idx]
+	FarmDataManager.sync_calendar_state()
+	var date_info: Dictionary = FarmDataManager.get_current_date_info()
 
-	var desc = ""
+	var desc := ""
 	match FarmDataManager.current_season:
 		"Spring":
 			desc = "Gentle rains. The water table rises."
@@ -4201,7 +4479,12 @@ func _refresh_season_display() -> void:
 		var sl: Label = hud_instance.get("season_label") as Label
 		var wdl: Label = hud_instance.get("weather_desc_label") as Label
 		if is_instance_valid(sl):
-			sl.text = "Year %d - %s (Turn %d)" % [year, FarmDataManager.current_season, FarmDataManager.current_turn]
+			sl.text = FarmDataManager.format_calendar_date()
+			sl.tooltip_text = "%s · %s (Turn %d)" % [
+				str(date_info.get("season_name", "")),
+				FarmDataManager.current_season,
+				FarmDataManager.current_turn,
+			]
 		if is_instance_valid(wdl):
 			wdl.text = desc
 
@@ -4235,19 +4518,49 @@ func _get_weather_for_day(target_day: int) -> String:
 	return _heritage_garden_weather(_generate_random_weather())
 
 
-func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, wait_dur: float) -> void:
-	var worker_sprite := Sprite2D.new()
-
-	var tex_path = w_data.get("sprite", "res://icon.svg")
+func _create_character_visual(w_data: Dictionary) -> Node2D:
+	if FarmerCharacterAnim.uses_animated_sprite(w_data):
+		var anim_sprite := AnimatedSprite2D.new()
+		FarmerCharacterAnim.setup_sprite(anim_sprite, w_data)
+		anim_sprite.z_index = 10
+		anim_sprite.scale = Vector2(1.5, 1.5)
+		anim_sprite.offset = Vector2(0, -60)
+		return anim_sprite
+	var static_sprite := Sprite2D.new()
+	static_sprite.centered = true
+	var tex_path: String = str(w_data.get("sprite", "res://icon.svg"))
 	if ResourceLoader.exists(tex_path):
-		worker_sprite.texture = load(tex_path)
+		static_sprite.texture = load(tex_path)
 	else:
-		worker_sprite.texture = preload("res://icon.svg")
+		static_sprite.texture = preload("res://icon.svg")
+	static_sprite.modulate = Color.WHITE
+	static_sprite.z_index = 10
+	static_sprite.scale = Vector2(1.5, 1.5)
+	static_sprite.offset = Vector2(0, -60)
+	return static_sprite
 
-	worker_sprite.modulate = Color.WHITE # Remove the artificial tint
-	worker_sprite.z_index = 10
-	worker_sprite.scale = Vector2(1.5, 1.5)
-	worker_sprite.offset = Vector2(0, -60)
+
+func _tween_character_move(
+	visual: Node2D,
+	from_cell: Vector2i,
+	to_cell: Vector2i,
+	target_px: Vector2,
+	duration: float,
+	ease_mode: Tween.EaseType = Tween.EASE_OUT,
+	trans_mode: Tween.TransitionType = Tween.TRANS_CUBIC,
+) -> void:
+	if visual is AnimatedSprite2D:
+		FarmerCharacterAnim.play_walk(visual, FarmerCharacterAnim.direction_from_delta(to_cell - from_cell))
+	var tween := create_tween()
+	tween.tween_property(visual, "position", target_px, duration) \
+		.set_ease(ease_mode).set_trans(trans_mode)
+	await tween.finished
+	if visual is AnimatedSprite2D:
+		FarmerCharacterAnim.face_idle(visual, FarmerCharacterAnim.direction_from_delta(to_cell - from_cell))
+
+
+func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, wait_dur: float) -> void:
+	var worker_sprite: Node2D = _create_character_visual(w_data)
 	worker_sprite.position = map_to_local(farmhouse_pos)
 	add_child(worker_sprite)
 
@@ -4263,17 +4576,17 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 		if path_arr.size() >= 2:
 			var seg_count: int = path_arr.size() - 1
 			var step_dur: float = dash_dur / float(seg_count)
+			var prev_cell: Vector2i = path_arr[0] as Vector2i
 			for pi in range(1, path_arr.size()):
 				var step_cell: Vector2i = path_arr[pi] as Vector2i
 				var target_px := map_to_local(step_cell)
-				var dash = create_tween()
-				dash.tween_property(worker_sprite, "position", target_px, step_dur).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-				await dash.finished
+				await _tween_character_move(worker_sprite, prev_cell, step_cell, target_px, step_dur)
+				prev_cell = step_cell
 		else:
-			var target_px = map_to_local(Vector2i(ax, ay))
-			var dash = create_tween()
-			dash.tween_property(worker_sprite, "position", target_px, dash_dur).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-			await dash.finished
+			var from_cell := local_to_map(worker_sprite.position)
+			var target_cell := Vector2i(ax, ay)
+			var target_px = map_to_local(target_cell)
+			await _tween_character_move(worker_sprite, from_cell, target_cell, target_px, dash_dur)
 
 		var act: String = item["action"]
 		var cell: Dictionary = FarmDataManager.grid_data[ax][ay]
@@ -4283,9 +4596,18 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 				if cell.get("has_path", false):
 					cell["has_path"] = false
 				cell["land"] = "cultivated"
+				# Tilling collapses a swale's deep reservoir — back to the normal 0–10 soil cap.
+				cell["moisture"] = minf(float(cell.get("moisture", 5.0)), 10.0)
 				_clear_cell_plant_data(cell)
 				var till_msg := "E-Tilled" if act == "e_tiller" else "Rotovated"
 				spawn_floating_text(till_msg, Color("8d6e63"), Vector2i(pos.x, pos.y), "actions")
+				_spawn_dirt_particles(map_to_local(pos))
+				if act == "e_tiller":
+					# Powered machinery slams the earth much harder than the manual rotovator.
+					_shake_camera(18.0, 0.35)
+					_apply_hit_stop()
+				else:
+					_shake_camera(7.0, 0.25)
 			"harvest":
 				var mature := _mature_plant_on_cell(cell)
 				if mature.is_empty():
@@ -4314,7 +4636,7 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 					if str(p_data_h.get("lifecycle", "annual")) == "annual":
 						_remove_plant_layer(cell, str(mature["layer"]))
 					else:
-						cell[str(mature["age_key"])] = float(p_data_h.get("mature_turn", 2)) / 2.0
+						cell[str(mature["age_key"])] = float(PlantGrowth.days_to_mature(p_data_h)) / 2.0
 			"chop_and_drop":
 				var top_plant := _top_plant_on_cell(cell)
 				if top_plant.is_empty():
@@ -4371,12 +4693,19 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 			"dig_swale":
 				cell["land"] = "swale"
 				cell["moisture"] = 10.0
+				_clear_cell_plant_data(cell, "Swaled")
+				_spawn_dirt_particles(map_to_local(pos))
+				_shake_camera(12.0, 0.3)
+				_apply_hit_stop()
 			"build_mound":
 				cell["land"] = "mound"
 				cell["nitrogen"] = 5.0
+				cell["moisture"] = minf(float(cell.get("moisture", 5.0)), 10.0)
 				# Hugelbeds breathe life into the earth!
 				cell["aeration"] = 85
 				cell["biodiversity"] = clampi(int(cell.get("biodiversity", 10)) + 15, 0, 100)
+				_spawn_dirt_particles(map_to_local(pos))
+				_shake_camera(10.0, 0.25)
 			"plant":
 				var seed_id: String = item.get("seed_id", "")
 				if seed_id != "":
@@ -4384,8 +4713,9 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 					var layer = str(p_data.get("layer", "ground")).to_lower()
 					cell[layer] = seed_id
 					spawn_floating_text("+ Planted", Color("a5d6a7"), Vector2i(pos.x, pos.y), "actions")
-					cell[layer + "_age"] = 0
+					FarmDataManager.mark_plant_planted(cell, layer)
 					cell[layer + "_yield"] = 0
+					_animate_plant_change(Vector2i(ax, ay), true, 0.0, seed_id)
 			"water_tile", "hosepipe":
 				var w_cap := SWALE_MOISTURE_MAX if str(cell.get("land", "")) == "swale" else 10.0
 				if FarmDataManager.creative_infinite_water:
@@ -4394,6 +4724,7 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 					cell["moisture"] = clampf(float(cell.get("moisture", 5.0)) + 3.0, 0.0, w_cap)
 				var water_msg := "Hosed" if act == "hosepipe" else "Watered"
 				spawn_floating_text(water_msg, Color("64b5f6"), Vector2i(pos.x, pos.y), "actions")
+				_spawn_water_particles(map_to_local(pos))
 			"apply_tea":
 				cell["nitrogen"] = clampf(float(cell.get("nitrogen", 5.0)) + 2.0, 0.0, 10.0)
 				cell["bacteria"] = clampf(float(cell.get("bacteria", 0.0)) + 3.0, 0.0, 10.0)
@@ -4610,16 +4941,21 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 		if home_path.size() > 1:
 			var seg_count: int = home_path.size() - 1
 			var step_dur: float = 0.4 / float(seg_count)
+			var prev_cell: Vector2i = home_path[0] as Vector2i
 			for pi in range(1, home_path.size()):
 				var step_cell: Vector2i = home_path[pi] as Vector2i
 				var target_px := map_to_local(step_cell)
-				var return_seg = create_tween()
-				return_seg.tween_property(worker_sprite, "position", target_px, step_dur).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
-				await return_seg.finished
+				await _tween_character_move(
+					worker_sprite, prev_cell, step_cell, target_px, step_dur,
+					Tween.EASE_IN_OUT, Tween.TRANS_SINE
+				)
+				prev_cell = step_cell
 		else:
-			var return_dash = create_tween()
-			return_dash.tween_property(worker_sprite, "position", map_to_local(home_pos), 0.4).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
-			await return_dash.finished
+			var from_cell := local_to_map(worker_sprite.position)
+			await _tween_character_move(
+				worker_sprite, from_cell, home_pos, map_to_local(home_pos), 0.4,
+				Tween.EASE_IN_OUT, Tween.TRANS_SINE
+			)
 
 	worker_sprite.queue_free()
 	_active_zipping_workers -= 1
@@ -4657,6 +4993,9 @@ func trigger_sleep() -> void:
 	_cached_farmer_pos = Vector2i(-1, -1)
 	is_sleeping = true
 	is_daytime = false
+	_sleep_wave_epoch = Time.get_ticks_msec() / 1000.0
+	if is_instance_valid(nutrient_transfer_overlay) and _is_data_lens():
+		nutrient_transfer_overlay.begin_sleep_vibe(_sleep_wave_epoch)
 	night_memory.clear()
 	_daytime_melody.clear()
 	_sequence_step = 0
@@ -4748,7 +5087,10 @@ func trigger_sleep() -> void:
 		morning_triage_active = true
 		get_tree().create_timer(10.0, false).timeout.connect(func(): morning_triage_active = false)
 	)
+	if is_instance_valid(nutrient_transfer_overlay):
+		nutrient_transfer_overlay.finish_sleep_waves(_sleep_wave_epoch)
 	is_sleeping = false
+	_redraw_data_lens_overlays()
 	OS.low_processor_usage_mode = true
 
 	# VIBE CODING: Return to the chill, empty beat
@@ -4915,7 +5257,53 @@ func _on_rhythm_tick(_beat_index: int) -> void:
 		_sequence_step = (_sequence_step + 1) % MELODY_PATTERN.size()
 
 
+func _snapshot_transfer_stats() -> Dictionary:
+	var w := _map_w()
+	var h := _map_h()
+	var size := w * h
+	var snap := {}
+	for stat in ["moisture", "nitrogen", "minerals"]:
+		var arr := PackedFloat32Array()
+		arr.resize(size)
+		for x in range(w):
+			for y in range(h):
+				arr[y * w + x] = float(FarmDataManager.grid_data[x][y].get(stat, 0.0))
+		snap[stat] = arr
+	return snap
+
+
+func _redraw_data_lens_overlays() -> void:
+	if not _is_data_lens():
+		return
+	if is_instance_valid(data_view_panel_overlay):
+		data_view_panel_overlay.queue_redraw()
+	if is_instance_valid(data_view_overlay):
+		data_view_overlay.queue_redraw()
+	if is_instance_valid(nutrient_transfer_overlay):
+		nutrient_transfer_overlay.queue_redraw()
+
+
+func _start_turn_transfer_waves() -> void:
+	if not is_instance_valid(nutrient_transfer_overlay) or _last_transfer_snapshot.is_empty():
+		return
+	var now: float = Time.get_ticks_msec() / 1000.0
+	var elapsed: float = now - _sleep_wave_epoch if _sleep_wave_epoch > 0.0 else 0.0
+	var remain: float = 1.8
+	if not overnight_events.is_empty():
+		remain += 3.5
+	nutrient_transfer_overlay.show_turn_transfers(
+		_last_transfer_snapshot,
+		_turn_nutrient_flows,
+		_sleep_wave_epoch if _sleep_wave_epoch > 0.0 else now,
+		elapsed + remain
+	)
+	_redraw_data_lens_overlays()
+
+
 func _process_turn_logic() -> void:
+	_turn_nutrient_flows.clear()
+	_last_transfer_snapshot = _snapshot_transfer_stats()
+
 	overnight_events.clear()
 	_process_oakhaven_npc_turn()
 
@@ -4937,17 +5325,14 @@ func _process_turn_logic() -> void:
 					_apply_drone_pollinator(Vector2i(x, y))
 
 	# --- CONSUME WEATHER EVENT ---
-	# Pop = weather for this night’s transition; append replaces the far tail (day current_turn+5 after pop).
+	# Pop = weather for this night’s transition; append replaces the far tail.
 	if forecast.is_empty():
-		forecast.clear()
-		for i in range(5):
-			var refill_day: int = FarmDataManager.current_turn + i
-			forecast.append(_get_weather_for_day(refill_day))
+		_refill_forecast()
 	var todays_weather: String = forecast.pop_front()
 	if todays_weather == "drought":
 		todays_weather = "dry" # legacy key / old saves
 	todays_weather = _heritage_garden_weather(todays_weather)
-	forecast.append(_get_weather_for_day(FarmDataManager.current_turn + 5))
+	forecast.append(_get_weather_for_day(FarmDataManager.current_turn + FORECAST_HORIZON))
 
 	var weather_data: Dictionary = weather_types.get(todays_weather, weather_types["clear"])
 	if FarmDataManager.active_campaign_id == "automata":
@@ -4963,6 +5348,8 @@ func _process_turn_logic() -> void:
 	)
 
 	_last_night_weather = todays_weather
+	_stress_anim_budget = 16
+	_update_weather_atmosphere(todays_weather)
 
 	# --- V3 DAILY WEATHER → moisture (0–10, swales 0–SWALE_MOISTURE_MAX); infra skip; polytunnel mild −0.2 ---
 	const SKIP_WEATHER_LANDS: Array[String] = ["road", "house", "house_door", "bridge", "river", "stream"]
@@ -5044,8 +5431,10 @@ func _process_turn_logic() -> void:
 								"] Reason: Frost (weather) Stats: ",
 								wf_stats
 							)
+							FarmDataManager.record_plant_death(cell, l, str(p_id), "Frost (weather)")
+							_animate_plant_change(Vector2i(x, y), false, 1.0, str(p_id))
 							cell[l] = ""
-							cell.erase(l + "_age")
+							FarmDataManager.erase_plant_tracking_keys(cell, l)
 							spawn_floating_text("Frozen", Color("81d4fa"), Vector2i(x, y), "warnings")
 							overnight_events.append({
 								"type": "plant_died",
@@ -5055,7 +5444,6 @@ func _process_turn_logic() -> void:
 	await _apply_overnight_bee_pollination()
 
 	var daily_profits: Array = []
-	_refresh_season_display()
 	var spreading_spawns: Array[Dictionary] = [] # BUFFER: Holds invasive plants trying to spread this turn
 
 	const MOISTURE_CAP := 10.0
@@ -5109,6 +5497,7 @@ func _process_turn_logic() -> void:
 								want = minf(want, maxf(0.0, budget - total_out))
 								if want > 0.0:
 									nc["moisture"] = clampf(nc_mo + want, 0.0, MOISTURE_CAP)
+									_record_nutrient_flow(Vector2i(x, y), Vector2i(nx, ny), "moisture", want)
 									total_out += want
 					cell["moisture"] = clampf(swale_m - total_out, SWALE_MIN_MO, SWALE_MOISTURE_MAX)
 
@@ -5221,8 +5610,9 @@ func _process_turn_logic() -> void:
 									"] Reason: Frostbite Stats: ",
 									f_stats
 								)
+								FarmDataManager.record_plant_death(cell, layer, str(p_id), "Frostbite")
 								cell[layer] = ""
-								cell.erase(age_key)
+								FarmDataManager.erase_plant_tracking_keys(cell, layer)
 								continue # Plant is dead, skip the rest of the loop
 
 					# 2. Apply Growth (roots read aeration; V3 gatekeepers can kill the plant)
@@ -5230,9 +5620,13 @@ func _process_turn_logic() -> void:
 					if bio_growth < 0.0:
 						continue
 					cell[age_key] = cell.get(age_key, 0) + (1 * syn_mult * bio_growth)
+					cell[layer + "_peak_age"] = maxf(
+						float(cell.get(layer + "_peak_age", 0.0)),
+						float(cell[age_key])
+					)
 
 					# 3. Handle Harvest (optional automation)
-					if FarmDataManager.auto_harvest and cell[age_key] >= p_data.get("mature_turn", 2):
+					if FarmDataManager.auto_harvest and cell[age_key] >= PlantGrowth.days_to_mature(p_data):
 						var y_val = p_data.get("yield_val", 0)
 						if y_val > 0:
 							# ONLY HARVEST ON PLAYER PROPERTY
@@ -5262,7 +5656,7 @@ func _process_turn_logic() -> void:
 								cell[layer] = ""
 								cell.erase(age_key)
 							else:
-								cell[age_key] = float(p_data.get("mature_turn", 2)) / 2.0
+								cell[age_key] = float(PlantGrowth.days_to_mature(p_data)) / 2.0
 
 					# 4. V3 soil web exchange (moisture/N/minerals + micro-life)
 					if _cell_str_nonempty(cell, layer):
@@ -5273,7 +5667,7 @@ func _process_turn_logic() -> void:
 					if FarmDataManager.current_season == "Winter":
 						spread_rate = 0 # The frost halts all invasive creeping
 					# Plants must be at least half mature to drop seeds or send runners
-					if spread_rate > 0 and cell.get(age_key, 0) >= (float(p_data.get("mature_turn", 2)) / 2.0):
+					if spread_rate > 0 and cell.get(age_key, 0) >= (float(PlantGrowth.days_to_mature(p_data)) / 2.0):
 						# High spread rate = higher chance per turn (e.g. Balsam at 10 = 25% chance)
 						# Drop the multiplier to 0.05. A spread rate of 10 now equals a 0.5% daily chance (~3.5% per week)
 						if randf() * 100 < (spread_rate * 0.05):
@@ -5309,8 +5703,9 @@ func _process_turn_logic() -> void:
 								"] Reason: Desiccation Stats: ",
 								d_stats
 							)
+							FarmDataManager.record_plant_death(cell, layer, str(p_id), "Desiccation")
 							cell[layer] = "" # Shallow-rooted annuals die
-							cell.erase(layer + "_age")
+							FarmDataManager.erase_plant_tracking_keys(cell, layer)
 							died = true
 						else:
 							cell[layer + "_age"] = 0 # Perennials survive but lose their current yield progress
@@ -5384,7 +5779,7 @@ func _process_turn_logic() -> void:
 				var sp_data = preload("res://data/data_plants.gd").get_plant_data(sp["p_id"])
 				if not (target_shaded and sp_data.get("shade_tolerance", "Medium") == "Low"):
 					t_cell[t_layer] = sp["p_id"]
-					t_cell[t_layer + "_age"] = 0
+					FarmDataManager.mark_plant_planted(t_cell, t_layer)
 					if sp_data.get("toxicity", "") == "Invasive weed":
 						overnight_events.append({
 							"type": "weed_spread",
@@ -5395,6 +5790,8 @@ func _process_turn_logic() -> void:
 						t_cell["land"] = "overgrown"
 
 	FarmDataManager.current_turn += 1
+	FarmDataManager.sync_calendar_state()
+	_refresh_season_display()
 	if FarmDataManager.active_campaign_id == "desert" and FarmDataManager.current_turn == 15 and not _desert_net_unlock_announced:
 		_desert_net_unlock_announced = true
 		spawn_floating_text("Moisture Nets Invented!", Color("81d4fa"), home_pos, "warnings")
@@ -5616,6 +6013,7 @@ func _process_turn_logic() -> void:
 	if is_instance_valid(main_camera) and main_camera.has_method("play_event_queue") and not overnight_events.is_empty():
 		main_camera.play_event_queue(overnight_events)
 
+	_start_turn_transfer_waves()
 
 func _generate_daily_narrative() -> void:
 	var boxes_owned = 0
@@ -5640,7 +6038,7 @@ func _generate_daily_narrative() -> void:
 	# 2. Fixed Story Beats (Pulled from data)
 	var story_msg = NarrativeData.get_lore(FarmDataManager.current_turn)
 
-	if FarmDataManager.active_campaign_id == "tutorial":
+	if FarmDataManager.active_campaign_id == "tutorial" and not MetaManager.dev_mode:
 		match FarmDataManager.current_turn:
 			1:
 				_trigger_tutorial_beat("tut_day_1")
@@ -5655,7 +6053,7 @@ func _generate_daily_narrative() -> void:
 			10:
 				_trigger_tutorial_beat("tut_day_10")
 		story_msg = ""
-	elif FarmDataManager.active_campaign_id == "wormfood" and FarmDataManager.current_turn in [3, 6, 8, 9, 12, 15]:
+	elif FarmDataManager.active_campaign_id == "wormfood" and not MetaManager.dev_mode and FarmDataManager.current_turn in [3, 6, 8, 9, 12, 15]:
 		if is_instance_valid(narrative_ui):
 			_hide_hover_for_narrative()
 			var story = NarrativeData.get_dialogue("tut_day_" + str(FarmDataManager.current_turn))
@@ -5664,7 +6062,7 @@ func _generate_daily_narrative() -> void:
 			story_msg = ""
 
 	# Handle specific mechanical triggers tied to story days (wormfood only)
-	if FarmDataManager.active_campaign_id == "wormfood" and FarmDataManager.current_turn == 5:
+	if FarmDataManager.active_campaign_id == "wormfood" and not MetaManager.dev_mode and FarmDataManager.current_turn == 5:
 		if is_instance_valid(narrative_ui):
 			_hide_hover_for_narrative()
 			var story = NarrativeData.get_dialogue("day_5_workers")
@@ -6195,10 +6593,23 @@ func _play_balsam_pop() -> void:
 	p.finished.connect(p.queue_free)
 
 
+## Tactile feedback: the hardware cursor mirrors the equipped tool, so the player
+## never has to glance at the bottom bar. Q (empty hands) resets to the arrow.
+func _update_tool_cursor(t_name: String) -> void:
+	match t_name:
+		"rotovate", "e_tiller", "dig_swale", "build_mound":
+			Input.set_default_cursor_shape(Input.CURSOR_CROSS)
+		"plant", "water_tile", "hosepipe", "apply_tea":
+			Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
+		_:
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+
 func set_current_tool(t_name: String, t_seed: String = "", t_struct: String = "") -> void:
 	active_tool = t_name
 	active_seed = t_seed
 	active_structure = t_struct
+	_update_tool_cursor(t_name)
 
 	var display_name = t_name
 	if t_name == "plant" and t_seed != "":
@@ -6657,13 +7068,19 @@ func _apply_plant_stress(cell: Dictionary, layer: String, map_pos: Vector2i, rea
 			" Stats: ",
 			stats
 		)
+		FarmDataManager.record_plant_death(cell, layer, plant_id, reason)
+		_animate_plant_change(map_pos, false, 1.0, plant_id)
 		cell[layer] = ""
-		cell.erase(age_key)
+		FarmDataManager.erase_plant_tracking_keys(cell, layer)
 		if has_method("spawn_floating_text"):
 			spawn_floating_text("Fatal: " + reason, Color("ff5252"), map_pos, "warnings")
 		return true # The plant died
 
 	# The plant survived, but is stressed (struggling seedling)
+	if _stress_anim_budget > 0 and randf() < 0.35:
+		_stress_anim_budget -= 1
+		var stress_ratio := clampf(float(cell[age_key]) / death_threshold, 0.0, 1.0)
+		_animate_plant_change(map_pos, false, minf(stress_ratio, 0.95), str(cell.get(layer, "")))
 	if randf() < 0.05:
 		if has_method("spawn_floating_text"):
 			spawn_floating_text(reason, Color("ffb74d"), map_pos, "warnings")
@@ -6744,11 +7161,15 @@ func _process_plant_biology(map_pos: Vector2i, plant_id: String, phase: String =
 			if str(cell.get(layer, "")) != plant_id:
 				return 1.0
 
-			var md := float(plant_data.get("moisture_delta", 0))
-			var nd := float(plant_data.get("nitrogen_delta", 0))
-			var mind := float(plant_data.get("mineral_delta", 0))
-			var sd := float(plant_data.get("structure_delta", 0))
-			var td := float(plant_data.get("toxicity_delta", 0))
+			var age_key := "%s_age" % layer
+			var plant_age := float(cell.get(age_key, 0.0))
+			var stage := _get_plant_growth_stage(plant_id, plant_age)
+			var scaled: Dictionary = PlantGrowth.scaled_exchange_deltas(plant_data, stage)
+			var md := float(scaled.get("moisture", 0))
+			var nd := float(scaled.get("nitrogen", 0))
+			var mind := float(scaled.get("minerals", 0))
+			var sd := float(scaled.get("structure", 0))
+			var td := float(scaled.get("toxicity", 0))
 
 			cell["moisture"] = clampf(float(cell.get("moisture", 5.0)) + md, 0.0, 10.0)
 			cell["nitrogen"] = clampf(float(cell.get("nitrogen", 5.0)) + nd, 0.0, 10.0)
@@ -7239,6 +7660,248 @@ func _spawn_click_particles(pos: Vector2, burst_color: Color) -> void:
 
 	var t = get_tree().create_timer(1.0, false)
 	t.timeout.connect(func(): if is_instance_valid(burst): burst.queue_free())
+
+
+# ============================================================
+# GAME FEEL / JUICE HELPERS
+# ============================================================
+
+const PLANT_STRESS_TINT := Color("a89f68")
+
+const WEATHER_TINTS: Dictionary = {
+	"clear": Color(1.0, 1.0, 1.0),
+	"rain": Color(0.6, 0.7, 0.8),
+	"dry": Color(1.1, 0.95, 0.8),
+	"frost": Color(0.78, 0.85, 0.98),
+}
+
+
+## Only swales can hold a visible surface reservoir — every other land type returns 0 so the
+## blue shimmer can never appear on dirt/grass even if stale moisture > 10 lingers in the data.
+func _capillary_shimmer_moisture(cell: Dictionary) -> float:
+	if str(cell.get("land", "")) != "swale":
+		return 0.0
+	return float(cell.get("moisture", 0.0))
+
+
+## Earthworks burst: dark dirt clods exploding outwards, pulled back down by gravity.
+func _spawn_dirt_particles(pos: Vector2) -> void:
+	var burst := CPUParticles2D.new()
+	burst.emitting = false
+	burst.one_shot = true
+	burst.amount = 24
+	burst.lifetime = 0.7
+	burst.explosiveness = 1.0
+	burst.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	burst.emission_sphere_radius = 30.0
+	burst.direction = Vector2(0, -1)
+	burst.spread = 70.0
+	burst.gravity = Vector2(0, 1400)
+	burst.initial_velocity_min = 250.0
+	burst.initial_velocity_max = 520.0
+	burst.scale_amount_min = 8.0
+	burst.scale_amount_max = 18.0
+	burst.color = Color("4a3b2c")
+	burst.z_index = 100
+	burst.position = pos
+	add_child(burst)
+	burst.emitting = true
+	var t := get_tree().create_timer(1.2, false)
+	t.timeout.connect(func(): if is_instance_valid(burst): burst.queue_free())
+
+
+## Watering splash: bright blue droplets thrown upwards that fall back under gravity.
+func _spawn_water_particles(pos: Vector2) -> void:
+	var burst := CPUParticles2D.new()
+	burst.emitting = false
+	burst.one_shot = true
+	burst.amount = 28
+	burst.lifetime = 0.8
+	burst.explosiveness = 1.0
+	burst.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	burst.emission_sphere_radius = 20.0
+	burst.direction = Vector2(0, -1)
+	burst.spread = 45.0
+	burst.gravity = Vector2(0, 1600)
+	burst.initial_velocity_min = 320.0
+	burst.initial_velocity_max = 620.0
+	burst.scale_amount_min = 6.0
+	burst.scale_amount_max = 12.0
+	burst.color = Color(0.4, 0.78, 1.0, 0.9)
+	burst.z_index = 100
+	burst.position = pos
+	add_child(burst)
+	burst.emitting = true
+	var t := get_tree().create_timer(1.2, false)
+	t.timeout.connect(func(): if is_instance_valid(burst): burst.queue_free())
+
+
+func _shake_camera(intensity: float, duration: float = 0.3) -> void:
+	if is_instance_valid(main_camera) and main_camera.has_method("apply_screen_shake"):
+		main_camera.apply_screen_shake(intensity, duration)
+
+
+## Tiny freeze-frame for heavy tool impacts. Timer ignores time_scale so we always recover.
+func _apply_hit_stop(slow_scale: float = 0.1, real_seconds: float = 0.05) -> void:
+	if _hit_stop_active:
+		return
+	_hit_stop_active = true
+	Engine.time_scale = slow_scale
+	await get_tree().create_timer(real_seconds, true, false, true).timeout
+	Engine.time_scale = 1.0
+	_hit_stop_active = false
+
+
+## Temporary Sprite2D copy of a plant's atlas tile, used for spawn/stress/death animations
+## (plants are TileMapLayer cells, so they cannot be tweened directly).
+func _make_plant_ghost_sprite(cell_pos: Vector2i, plant_id: String) -> Sprite2D:
+	if _flora_tile_set == null:
+		return null
+	var src := _flora_tile_set.get_source(0) as TileSetAtlasSource
+	if src == null or src.texture == null:
+		return null
+	var growth_stage := -1
+	if cell_pos.x >= 0 and cell_pos.x < _map_w() and cell_pos.y >= 0 and cell_pos.y < _map_h():
+		var cell: Dictionary = FarmDataManager.grid_data[cell_pos.x][cell_pos.y]
+		for layer in ["canopy", "understory", "ground"]:
+			if str(cell.get(layer, "")) == plant_id:
+				growth_stage = _get_plant_growth_stage(plant_id, float(cell.get("%s_age" % layer, 0.0)))
+				break
+	var coord := PlantGrowth.flora_atlas_coord(plant_id, growth_stage)
+	if coord.x < 0:
+		return null
+	var tile_sz := int(PlantGrowth.flora_atlas_meta().get("tile_size", 200))
+	var tex := AtlasTexture.new()
+	tex.atlas = src.texture
+	tex.region = Rect2(coord.x * tile_sz, coord.y * tile_sz, tile_sz, tile_sz)
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.centered = true
+	sprite.position = map_to_local(cell_pos)
+	sprite.z_index = 9
+	add_child(sprite)
+	return sprite
+
+
+## Visual feedback for plant lifecycle changes.
+## is_new=true → bouncy spring pop-in. stress_level >= 1.0 → death shrink+fade.
+## 0 < stress_level < 1 → sickly desaturated tint flash proportional to how close to death.
+func _animate_plant_change(cell_pos: Vector2i, is_new: bool, stress_level: float, plant_id: String = "") -> void:
+	if plant_id == "" and cell_pos.x >= 0 and cell_pos.x < _map_w() and cell_pos.y >= 0 and cell_pos.y < _map_h():
+		var cell: Dictionary = FarmDataManager.grid_data[cell_pos.x][cell_pos.y]
+		for layer in ["canopy", "understory", "ground"]:
+			if _cell_str_nonempty(cell, layer):
+				plant_id = str(cell[layer])
+				break
+	if plant_id == "":
+		return
+	var sprite := _make_plant_ghost_sprite(cell_pos, plant_id)
+	if sprite == null:
+		return
+	var tween := create_tween()
+	if is_new:
+		# Spring overshoot to 1.5x (matching the chunky sprite scale), settle, then reveal the real tile.
+		sprite.scale = Vector2.ZERO
+		tween.tween_property(sprite, "scale", Vector2(1.5, 1.5), 0.4) \
+			.set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tween.tween_property(sprite, "scale", Vector2.ONE, 0.12) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_property(sprite, "modulate:a", 0.0, 0.15)
+	elif stress_level >= 1.0:
+		# Death: shrink and fade out instead of vanishing instantly.
+		tween.set_parallel(true)
+		tween.tween_property(sprite, "scale", Vector2.ZERO, 0.5) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 0), 0.5)
+		tween.set_parallel(false)
+	else:
+		var sick := Color(1, 1, 1).lerp(PLANT_STRESS_TINT, clampf(stress_level, 0.25, 1.0))
+		tween.tween_property(sprite, "modulate", sick, 0.35).set_trans(Tween.TRANS_SINE)
+		tween.tween_interval(0.25)
+		tween.tween_property(sprite, "modulate:a", 0.0, 0.3)
+	tween.tween_callback(sprite.queue_free)
+
+
+## Tween the CanvasModulate towards the day's weather tint and toggle ambient rain.
+func _update_weather_atmosphere(weather: String) -> void:
+	if is_instance_valid(weather_modulate):
+		var target: Color = WEATHER_TINTS.get(weather, Color(1, 1, 1))
+		if _weather_tint_tween and _weather_tint_tween.is_valid():
+			_weather_tint_tween.kill()
+		_weather_tint_tween = create_tween()
+		_weather_tint_tween.tween_property(weather_modulate, "color", target, 2.0) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_set_rain_active(weather == "rain")
+
+
+## Viewport-covering rain streaks, parented to the camera so they follow panning.
+func _set_rain_active(active: bool) -> void:
+	if not active:
+		if is_instance_valid(_rain_particles):
+			_rain_particles.emitting = false
+			var old := _rain_particles
+			get_tree().create_timer(2.0, false).timeout.connect(func():
+				if is_instance_valid(old):
+					old.queue_free()
+			)
+		_rain_particles = null
+		return
+	if is_instance_valid(_rain_particles):
+		_rain_particles.emitting = true
+		return
+	if not is_instance_valid(main_camera):
+		return
+	var rain := CPUParticles2D.new()
+	rain.name = "RainParticles"
+	rain.amount = 500
+	rain.lifetime = 1.6
+	rain.preprocess = 1.6
+	rain.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	rain.emission_rect_extents = Vector2(14000, 60)
+	rain.position = Vector2(0, -9000)
+	rain.direction = Vector2(0.07, 1.0)
+	rain.spread = 3.0
+	rain.gravity = Vector2(0, 2400)
+	rain.initial_velocity_min = 8500.0
+	rain.initial_velocity_max = 12000.0
+	rain.scale_amount_min = 18.0
+	rain.scale_amount_max = 34.0
+	rain.color = Color(0.72, 0.86, 1.0, 0.4)
+	rain.z_index = 90
+	main_camera.add_child(rain)
+	rain.emitting = true
+	_rain_particles = rain
+
+
+## Shimmering translucent water overlay for tiles holding more moisture than normal soil (> 10).
+## Alpha scales with how far above 10 the moisture sits — full swales glow like open water.
+class CapillaryOverlayNode extends Node2D:
+	var map_ref: Node2D
+	var wet_cells: Dictionary = {} # Vector2i -> moisture (float, > 10)
+
+	func set_cell_moisture(pos: Vector2i, moisture: float) -> void:
+		if moisture > 10.0:
+			wet_cells[pos] = moisture
+		elif wet_cells.has(pos):
+			wet_cells.erase(pos)
+			queue_redraw()
+
+	func _process(_delta: float) -> void:
+		if not wet_cells.is_empty() and map_ref and not map_ref.is_sleeping:
+			queue_redraw()
+
+	func _draw() -> void:
+		if wet_cells.is_empty() or map_ref == null:
+			return
+		var t := Time.get_ticks_msec() / 1000.0
+		for pos in wet_cells:
+			var moisture: float = wet_cells[pos]
+			var base_alpha: float = minf(0.6, (moisture - 10.0) * 0.1)
+			# Per-tile phase offset so neighbouring swales shimmer out of sync.
+			var shimmer := 0.85 + 0.15 * sin(t * 2.5 + float(pos.x) * 1.7 + float(pos.y) * 2.3)
+			var rect := Rect2(map_ref.map_to_local(pos) - Vector2(100, 100), Vector2(200, 200))
+			draw_rect(rect, Color(0.25, 0.6, 1.0, base_alpha * shimmer), true)
+			draw_rect(rect, Color(0.65, 0.88, 1.0, base_alpha * shimmer * 0.8), false, 4.0)
 
 
 class PreviewOverlayNode extends Node2D:

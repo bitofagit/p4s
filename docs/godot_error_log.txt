@@ -4,16 +4,16 @@
 # Retention: newest 10 session files; oldest deleted on each new run.
 #
 # Current session:
-docs/godot_error_log_2026-06-04_21-13-59.txt
+docs/godot_error_log_2026-07-09_16-43-06.txt
 #
 # Recent sessions (newest first):
-- docs/godot_error_log_2026-06-04_21-13-59.txt
-- docs/godot_error_log_2026-06-04_21-06-28.txt
-- docs/godot_error_log_2026-06-04_20-57-17.txt
-- docs/godot_error_log_2026-06-04_20-55-29.txt
-- docs/godot_error_log_2026-06-04_20-51-50.txt
-- docs/godot_error_log_2026-06-04_20-40-52.txt
-- docs/godot_error_log_2026-06-04_20-40-16.txt
-- docs/godot_error_log_2026-06-04_20-38-58.txt
-- docs/godot_error_log_2026-06-04_20-38-55.txt
-- docs/godot_error_log_2026-06-04_20-30-01.txt
+- docs/godot_error_log_2026-07-09_16-43-06.txt
+- docs/godot_error_log_2026-07-09_16-42-48.txt
+- docs/godot_error_log_2026-07-09_16-41-09.txt
+- docs/godot_error_log_2026-07-09_16-40-45.txt
+- docs/godot_error_log_2026-07-09_16-33-35.txt
+- docs/godot_error_log_2026-07-09_16-31-23.txt
+- docs/godot_error_log_2026-07-09_16-24-25.txt
+- docs/godot_error_log_2026-07-09_16-22-57.txt
+- docs/godot_error_log_2026-07-09_16-21-11.txt
+- docs/godot_error_log_2026-07-09_16-14-51.txt

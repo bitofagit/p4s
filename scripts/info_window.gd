@@ -29,6 +29,28 @@ func _forward_scroll_block(event: InputEvent) -> void:
 			UIInputUtil.safe_set_input_handled(self)
 
 
+func set_title_icon(tex: Texture2D) -> void:
+	var row: HBoxContainer = $VBoxContainer/HBoxContainer
+	var old := row.get_node_or_null("Title_Icon") as TextureRect
+	if tex == null:
+		if old:
+			old.queue_free()
+		return
+	var icon: TextureRect
+	if old:
+		icon = old
+	else:
+		icon = TextureRect.new()
+		icon.name = "Title_Icon"
+		row.add_child(icon)
+		row.move_child(icon, 0)
+	icon.texture = tex
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.custom_minimum_size = Vector2(32, 32)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+
+
 func load_data(title: String, data: Dictionary) -> void:
 	title_label.text = title.to_upper()
 	current_data = data

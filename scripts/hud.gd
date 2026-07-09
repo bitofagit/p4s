@@ -2,10 +2,11 @@ extends Control
 
 ## In-game HUD (`hud.tscn` + runtime `hud.gd`): **status strip** (`StatusStrip`), **InfoDock** (tile hover + forecast), bottom tool bar, queue, inspector, almanac, workers, save/load **signals**.
 ## `starting_map.gd` connects these signals to FarmDataManager / SaveManager / tools — HUD stays mostly “dumb UI”.
-## Pause overlay (`CanvasLayer/Pause_Overlay`): `_ready` injects **Sound Settings** (instantiates `ui_audio_panel.gd` on CanvasLayer, `PROCESS_MODE_ALWAYS` while paused).
+## Pause overlay (`CanvasLayer/Pause_Overlay`): Sound / Graphics / Gameplay settings swap inside the pause panel (same pattern as main menu).
 ## Broader orientation: docs/CODEBASE_GUIDE.md
 
 signal action_selected(action_name: String)
+signal quick_tool_selected(tool_id: String)
 signal lens_selected(lens_name: String)
 signal inventory_selected(item_name: String)
 @warning_ignore("unused_signal")
@@ -25,21 +26,79 @@ var weather_panel: PanelContainer
 var season_label: Label
 var weather_desc_label: Label
 
-## Right-side live tile + forecast dock (built in `_setup_info_dock`).
+## Right-side tile hover + inbox dock (`_setup_info_dock`).
 var info_dock_panel: PanelContainer
 var forecast_events_content: RichTextLabel
 var forecast_events_header: Label
 
+## Weather & calendar sidebar docks (edge-tab pop-outs).
+var weather_dock: PanelContainer
+var weather_grid: GridContainer
+var weather_detail_box: PanelContainer
+var weather_detail_label: RichTextLabel
+
+var calendar_dock: PanelContainer
+var calendar_header_row: HBoxContainer
+var calendar_month_title: Label
+var calendar_prev_btn: Button
+var calendar_today_btn: Button
+var calendar_next_btn: Button
+var calendar_month_grid: GridContainer
+var calendar_detail_box: PanelContainer
+var calendar_detail_label: RichTextLabel
+var _calendar_view_year: int = 1
+var _calendar_view_month_index: int = 0
+
 var inspector_panel: PanelContainer
+var inspector_preview_box: Control
 var inspector_icon: TextureRect
+var inspector_ground_rect: TextureRect
+var inspector_understory_rect: TextureRect
+var inspector_canopy_shadow_rect: TextureRect
+var inspector_canopy_rect: TextureRect
 var inspector_label: RichTextLabel
 var soil_profile_ui: SoilProfileUI
+var _inspector_flora_atlas_tex: Texture2D
 
 var minimap_panel: PanelContainer
 var minimap_rect: TextureRect
 
 var queue_panel: PanelContainer
 var queue_list: VBoxContainer
+
+## Ergonomics: Civ-style edge tabs (collapsed symbols that pop panels out) + Tab quick-select wheel.
+const EDGE_TAB_W := 48.0
+const EDGE_TAB_YELLOW := Color(1.0, 0.92, 0.25, 1.0)
+const BOTTOM_TOOLBAR_H := 130.0
+const BOTTOM_PANEL_H := 110.0
+const SLEEP_ICON_MAX := 92.0
+const FORECAST_DAYS := 25
+const FORECAST_COLS := 5
+const ACCURATE_FORECAST_DAYS := 5
+const MONTH_GRID_COLS := 7
+const MONTH_DAYS := 28
+const WEATHER_EMOJI := {
+	"clear": "☀️",
+	"rain": "🌧️",
+	"dry": "🏜️",
+	"frost": "❄️",
+	"drought": "🏜️",
+}
+const WEATHER_FLAVOR := {
+	"clear": "Sunny and bright. Plants will grow nicely, but keep an eye on the soil as it might start to dry out.",
+	"rain": "A good splash of water for the farm. Great for naturally topping up your swales and giving thirsty plants a drink.",
+	"dry": "A real scorcher. The ground will dry up quickly today, so make sure your thirsty crops are well watered!",
+	"frost": "Bitter cold. Delicate plants won't survive this without protection, like a polytunnel.",
+	"drought": "A real scorcher. The ground will dry up quickly today, so make sure your thirsty crops are well watered!",
+}
+var _edge_tab_strips: Dictionary = {} # DockSide -> VBoxContainer
+var _edge_tabs: Dictionary = {} # panel -> Button
+var _edge_close_btns: Dictionary = {} # DockSide -> Button
+var _panel_dock_side: Dictionary = {} # panel -> DockSide
+var _dock_open: Dictionary = {} # dock -> bool
+var _dock_slide_tweens: Dictionary = {}
+var quick_wheel: PanelContainer
+var _quick_wheel_hover: String = ""
 
 var active_tool_label: RichTextLabel
 var _last_tool_display: String = ""
@@ -119,16 +178,24 @@ var _time_machine_slider_syncing: bool = false
 @onready var btn_settings: Button = $CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer/Settings
 @onready var btn_hotkeys: Button = $CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer/Hotkeys
 @onready var btn_main_menu: Button = $CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer/Main_Menu
+@onready var btn_exit_game: Button = $CanvasLayer/Pause_Overlay/CenterContainer/PanelContainer/VBoxContainer/Exit_Game
 
 @onready var undo_button: Button = $CanvasLayer/Bottom_Dashboard/PanelContainer/HBoxContainer/Undo_Button
 
 var save_dialog: ConfirmationDialog
 var save_input: LineEdit
+var leave_confirm_dialog: ConfirmationDialog
+var _pending_leave_action: String = ""
 var load_dialog: ConfirmationDialog
 var load_list: ItemList
 var hotkeys_dialog: AcceptDialog
 var settings_dialog: AcceptDialog
 var fullscreen_toggle: CheckButton
+
+var pause_main_vbox: VBoxContainer
+var pause_audio_scroll: ScrollContainer
+var pause_graphics_scroll: ScrollContainer
+var pause_gameplay_scroll: ScrollContainer
 
 var is_rebinding: bool = false
 var action_to_rebind: String = ""
@@ -145,6 +212,7 @@ func is_blocking_ui_open() -> bool:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		_layout_sidebar_docks()
+		_layout_edge_tab_strips()
 
 
 func _ready() -> void:
@@ -159,6 +227,10 @@ func _ready() -> void:
 			if map and map.has_method("trigger_sleep"):
 				map.trigger_sleep()
 		)
+		if HudIcons.apply_button_icon(btn_sleep, "sleep", "", SLEEP_ICON_MAX):
+			btn_sleep.custom_minimum_size = Vector2(116, BOTTOM_PANEL_H - 14.0)
+			btn_sleep.tooltip_text = "Sleep / Next Turn (Space)"
+			_compact_sleep_button_style(btn_sleep, 3.0)
 
 	# --- LOAD INFO WINDOW (shared: Codex, Upgrades, Additives) ---
 	var InfoWindowScene = load("res://scenes/info_window.tscn")
@@ -188,6 +260,11 @@ func _ready() -> void:
 		_on_lens_pressed
 	)
 	var lenses_popup = lenses_menu.get_popup()
+	lenses_popup.add_separator("Data")
+	lenses_popup.add_item("Soil Data View")
+	lenses_popup.set_item_metadata(lenses_popup.item_count - 1, "soil_data")
+	lenses_popup.add_item("Plant Data View")
+	lenses_popup.set_item_metadata(lenses_popup.item_count - 1, "plant_data")
 	lenses_popup.add_separator("Abstract")
 	lenses_popup.add_item("Energy Vision")
 	lenses_popup.set_item_metadata(lenses_popup.item_count - 1, "energy")
@@ -205,7 +282,8 @@ func _ready() -> void:
 	btn_load.pressed.connect(_on_load_pressed)
 	btn_settings.pressed.connect(func(): settings_dialog.popup_centered())
 	btn_hotkeys.pressed.connect(func(): hotkeys_dialog.popup_centered())
-	btn_main_menu.pressed.connect(func(): main_menu_requested.emit())
+	btn_main_menu.pressed.connect(func(): _request_leave_game("main_menu"))
+	btn_exit_game.pressed.connect(func(): _request_leave_game("exit"))
 
 	var undo_parent = undo_button.get_parent()
 	var undo_idx = undo_button.get_index()
@@ -239,6 +317,8 @@ func _ready() -> void:
 	_setup_sidebar_docks()
 
 	_setup_info_dock()
+	_setup_weather_dock()
+	_setup_calendar_dock()
 
 	_setup_inspector_ui()
 
@@ -252,6 +332,7 @@ func _ready() -> void:
 	almanac_window.process_mode = Node.PROCESS_MODE_ALWAYS
 	almanac_close_button.process_mode = Node.PROCESS_MODE_ALWAYS
 	almanac_close_button.pressed.connect(_on_almanac_close_pressed)
+	_setup_almanac_title_icon()
 
 	# Wire up draggable Window title-bar close buttons and custom body dragging
 	if almanac_window:
@@ -294,6 +375,8 @@ func _ready() -> void:
 		info_popup.add_item("Ecology Scanner")
 		info_popup.add_separator()
 		info_popup.add_item("Toggle Farm Hands")
+		info_popup.add_item("Toggle Weather")
+		info_popup.add_item("Toggle Calendar")
 		info_popup.add_item("Toggle Dashboard")
 		info_popup.add_item("Toggle Tile Inspector")
 
@@ -316,12 +399,18 @@ func _ready() -> void:
 							_clamp_node_to_screen(codex_window)
 							var pd := preload("res://data/data_plants.gd")
 							codex_window.load_data("Permaculture Codex", pd.get_all_codex_data())
+							if codex_window.has_method("set_title_icon"):
+								codex_window.set_title_icon(HudIcons.get_icon("plant_codex", HudIcons.TITLE_ICON_PX))
 							codex_window.show()
 							_raise_hud_chrome()
 				"Ecology Scanner":
 					_toggle_sidebar_panel_with_focus(minimap_panel, UISidebarDock.DockSide.RIGHT)
 				"Toggle Farm Hands":
 					_toggle_sidebar_panel_with_focus(workers_window, UISidebarDock.DockSide.LEFT)
+				"Toggle Weather":
+					_toggle_sidebar_panel_with_focus(weather_dock, UISidebarDock.DockSide.RIGHT)
+				"Toggle Calendar":
+					_toggle_sidebar_panel_with_focus(calendar_dock, UISidebarDock.DockSide.RIGHT)
 				"Toggle Dashboard":
 					_toggle_sidebar_panel_with_focus(info_dock_panel, UISidebarDock.DockSide.RIGHT)
 				"Toggle Tile Inspector":
@@ -329,6 +418,7 @@ func _ready() -> void:
 				"Toggle Dev Console":
 					_toggle_sidebar_panel_with_focus(dev_panel, UISidebarDock.DockSide.LEFT)
 		)
+		_apply_info_menu_icons(info_popup)
 
 		# --- SYSTEM MENU (Wormfood roguelike end-run only) ---
 		if FarmDataManager.active_campaign_id == "wormfood":
@@ -556,28 +646,32 @@ func _ready() -> void:
 	call_deferred("_layout_sidebar_docks")
 	call_deferred("_raise_hud_chrome")
 	call_deferred("_wire_toolbar_menu_popups")
+	_setup_quick_wheel()
+	call_deferred("_apply_panel_breathing_room")
 
 	# Bottom toolbar sizing (draw order handled by _raise_hud_chrome).
 	var bottom_dash = get_node_or_null("CanvasLayer/Bottom_Dashboard")
 	if bottom_dash:
 		bottom_dash.visible = true
-		bottom_dash.custom_minimum_size = Vector2(0, maxf(bottom_dash.custom_minimum_size.y, 120.0))
+		bottom_dash.custom_minimum_size = Vector2(0, maxf(bottom_dash.custom_minimum_size.y, BOTTOM_TOOLBAR_H))
+		bottom_dash.offset_top = -BOTTOM_TOOLBAR_H
 		var bottom_panel = bottom_dash.get_node_or_null("PanelContainer") as PanelContainer
 		if bottom_panel:
-			bottom_panel.custom_minimum_size = Vector2(0, maxf(bottom_panel.custom_minimum_size.y, 100.0))
+			bottom_panel.custom_minimum_size = Vector2(0, maxf(bottom_panel.custom_minimum_size.y, BOTTOM_PANEL_H))
 
 	# --- Settings panels in Pause Menu (same scripts as main menu) ---
-	var pause_vbox := btn_main_menu.get_parent() as VBoxContainer
-	if pause_vbox:
+	pause_main_vbox = btn_main_menu.get_parent() as VBoxContainer
+	if pause_main_vbox:
+		_setup_pause_settings_panels()
 		var mm_idx := btn_main_menu.get_index()
 		_add_pause_settings_button(
-			pause_vbox, "Sound Settings", preload("res://scripts/ui_audio_panel.gd"), mm_idx
+			pause_main_vbox, "Sound Settings", pause_audio_scroll, mm_idx
 		)
 		_add_pause_settings_button(
-			pause_vbox, "Graphics & UI", preload("res://scripts/ui_graphics_panel.gd"), mm_idx
+			pause_main_vbox, "Graphics & UI", pause_graphics_scroll, mm_idx
 		)
 		_add_pause_settings_button(
-			pause_vbox, "Gameplay Settings", preload("res://scripts/ui_gameplay_panel.gd"), mm_idx
+			pause_main_vbox, "Gameplay Settings", pause_gameplay_scroll, mm_idx
 		)
 
 
@@ -590,7 +684,10 @@ func _process(_delta: float) -> void:
 		var txt = "[color=#00ff00][b]DEV MODE ACTIVE[/b][/color]\n"
 		txt += "FPS: %d | Mem: %d MB\n" % [int(fps), mem]
 		if map:
-			txt += "Day: %d | Season: %s\n" % [FarmDataManager.current_turn, FarmDataManager.current_season]
+			txt += "Date: %s | Season: %s\n" % [
+				FarmDataManager.format_calendar_date(),
+				FarmDataManager.current_season,
+			]
 			txt += "Entities in Queue: %d\n" % FarmDataManager.action_queue.size()
 			var m_pos = map.local_to_map(map.get_local_mouse_position())
 			txt += "Mouse Map Pos: (%d, %d)\n" % [m_pos.x, m_pos.y]
@@ -775,6 +872,18 @@ func _setup_dialogs() -> void:
 	save_dialog.add_child(save_input)
 	$CanvasLayer.add_child(save_dialog)
 	save_dialog.confirmed.connect(_execute_save)
+
+	leave_confirm_dialog = ConfirmationDialog.new()
+	leave_confirm_dialog.title = "Unsaved Progress"
+	leave_confirm_dialog.dialog_text = (
+		"You have unsaved progress.\n\n"
+		+ "Leave anyway? Your current farm will be lost unless you save first."
+	)
+	leave_confirm_dialog.ok_button_text = "Leave Anyway"
+	leave_confirm_dialog.cancel_button_text = "Stay in Game"
+	leave_confirm_dialog.process_mode = Node.PROCESS_MODE_ALWAYS
+	leave_confirm_dialog.confirmed.connect(_confirm_leave_game)
+	$CanvasLayer.add_child(leave_confirm_dialog)
 
 	load_dialog = ConfirmationDialog.new()
 	load_dialog.title = "Load Game"
@@ -963,6 +1072,57 @@ func _on_almanac_close_pressed() -> void:
 		map_node.close_almanac()
 
 
+func _compact_sleep_button_style(btn: Button, margin: float) -> void:
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var sb: StyleBox = btn.get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			var dup: StyleBoxFlat = sb.duplicate()
+			dup.content_margin_left = margin
+			dup.content_margin_right = margin
+			dup.content_margin_top = margin
+			dup.content_margin_bottom = margin
+			btn.add_theme_stylebox_override(state, dup)
+
+
+func _apply_info_menu_icons(info_popup: PopupMenu) -> void:
+	if info_popup == null:
+		return
+	for i in range(info_popup.item_count):
+		match info_popup.get_item_text(i):
+			"Almanac":
+				HudIcons.apply_popup_icon(info_popup, i, "almanac")
+			"Plant Codex":
+				HudIcons.apply_popup_icon(info_popup, i, "plant_codex")
+			"Ecology Scanner":
+				HudIcons.apply_popup_icon(info_popup, i, "ecology_scanner")
+			"Toggle Farm Hands":
+				HudIcons.apply_popup_icon(info_popup, i, "farm_hands")
+			"Toggle Tile Inspector":
+				HudIcons.apply_popup_icon(info_popup, i, "tile_inspector")
+			"Toggle Dev Console":
+				HudIcons.apply_popup_icon(info_popup, i, "dev_console")
+
+
+func _setup_almanac_title_icon() -> void:
+	var title_row := almanac_window.get_node_or_null(
+		"MarginContainer/VBoxContainer/TitleRow"
+	) as HBoxContainer
+	var tex := HudIcons.get_icon("almanac", HudIcons.TITLE_ICON_PX)
+	if title_row == null or tex == null:
+		return
+	if title_row.get_node_or_null("Almanac_Title_Icon") != null:
+		return
+	var icon := TextureRect.new()
+	icon.name = "Almanac_Title_Icon"
+	icon.texture = tex
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.custom_minimum_size = Vector2(32, 32)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	title_row.add_child(icon)
+	title_row.move_child(icon, 0)
+
+
 func close_almanac() -> void:
 	_on_almanac_close_pressed()
 
@@ -1123,6 +1283,31 @@ func _toggle_pause() -> void:
 	var is_paused := get_tree().paused
 	get_tree().paused = not is_paused
 	pause_overlay.visible = not is_paused
+	if pause_overlay.visible:
+		_show_pause_main_menu()
+
+
+func _request_leave_game(action: String) -> void:
+	_pending_leave_action = action
+	var save_mgr: Node = get_node_or_null("/root/SaveManager")
+	if save_mgr != null and save_mgr.has_method("has_unsaved_progress") and save_mgr.has_unsaved_progress():
+		leave_confirm_dialog.popup_centered(Vector2(440, 170))
+	else:
+		_confirm_leave_game()
+
+
+func _confirm_leave_game() -> void:
+	var action := _pending_leave_action
+	_pending_leave_action = ""
+	get_tree().paused = false
+	pause_overlay.visible = false
+	match action:
+		"main_menu":
+			main_menu_requested.emit()
+		"exit":
+			get_tree().quit()
+		_:
+			pass
 
 
 func _on_save_pressed() -> void:
@@ -1339,6 +1524,7 @@ func _on_action_pressed(id: int, popup: PopupMenu) -> void:
 
 
 func _on_lens_pressed(id: int, popup: PopupMenu) -> void:
+	# Metadata overrides display text (e.g. soil_data / plant_data / energy).
 	var idx = popup.get_item_index(id)
 	if idx < 0:
 		return
@@ -1357,10 +1543,14 @@ func _on_inventory_pressed(id: int, popup: PopupMenu) -> void:
 		var data = preload("res://data/data_upgrades.gd").ENTRIES
 		_clamp_node_to_screen(codex_window)
 		codex_window.load_data("Meta Upgrades", data)
+		if codex_window.has_method("set_title_icon"):
+			codex_window.set_title_icon(null)
 	elif selection == "Additives":
 		var data = preload("res://data/data_additives.gd").ENTRIES
 		_clamp_node_to_screen(codex_window)
 		codex_window.load_data("Soil Additives", data)
+		if codex_window.has_method("set_title_icon"):
+			codex_window.set_title_icon(null)
 	elif selection == "Seeds":
 		seed_picker.populate_and_show()
 	elif selection == "Produce":
@@ -1451,7 +1641,7 @@ func _setup_status_strip() -> void:
 	left_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	season_label = Label.new()
-	season_label.text = "Year 1 - Spring"
+	season_label.text = FarmDataManager.format_calendar_date(1)
 	season_label.add_theme_font_size_override("font_size", 16)
 	season_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 	left_vbox.add_child(season_label)
@@ -1576,7 +1766,7 @@ func _setup_info_dock() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(288, 240)
+	scroll.custom_minimum_size = Vector2(288, 220)
 
 	var col := VBoxContainer.new()
 	col.name = "DockBody"
@@ -1621,7 +1811,7 @@ func _setup_info_dock() -> void:
 
 	forecast_events_header = Label.new()
 	forecast_events_header.name = "Forecast_Events_Header"
-	forecast_events_header.text = "Forecast / Events"
+	forecast_events_header.text = "Farm Dashboard"
 	forecast_events_header.add_theme_font_size_override("font_size", 15)
 	forecast_events_header.add_theme_color_override("font_color", Color(0.96, 0.94, 0.9, 1))
 
@@ -1645,23 +1835,387 @@ func _setup_info_dock() -> void:
 	info_dock_panel.add_child(margin)
 
 
+func _setup_weather_dock() -> void:
+	weather_dock = PanelContainer.new()
+	weather_dock.name = "WeatherDock"
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	weather_grid = GridContainer.new()
+	weather_grid.name = "Weather_Grid"
+	weather_grid.columns = FORECAST_COLS
+	weather_grid.add_theme_constant_override("h_separation", 4)
+	weather_grid.add_theme_constant_override("v_separation", 4)
+	weather_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var detail_parts := _make_detail_panel()
+	weather_detail_box = detail_parts["panel"]
+	weather_detail_label = detail_parts["label"]
+	root.add_child(weather_grid)
+	root.add_child(weather_detail_box)
+	margin.add_child(root)
+	weather_dock.add_child(margin)
+	_set_weather_detail_text("Select a forecast day for details.")
+
+
+func _setup_calendar_dock() -> void:
+	calendar_dock = PanelContainer.new()
+	calendar_dock.name = "CalendarDock"
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	calendar_header_row = HBoxContainer.new()
+	calendar_header_row.name = "Calendar_Header_Row"
+	calendar_header_row.add_theme_constant_override("separation", 4)
+	calendar_header_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	calendar_prev_btn = Button.new()
+	calendar_prev_btn.name = "Calendar_Prev"
+	calendar_prev_btn.text = "‹"
+	calendar_prev_btn.flat = true
+	calendar_prev_btn.focus_mode = Control.FOCUS_NONE
+	calendar_prev_btn.tooltip_text = "Previous month"
+	calendar_prev_btn.custom_minimum_size = Vector2(28, 28)
+	calendar_prev_btn.pressed.connect(_on_calendar_prev_month)
+
+	calendar_month_title = Label.new()
+	calendar_month_title.name = "Calendar_Month_Title"
+	calendar_month_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	calendar_month_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	calendar_month_title.add_theme_font_size_override("font_size", 14)
+	calendar_month_title.add_theme_color_override("font_color", Color(0.82, 0.9, 0.72, 1))
+
+	calendar_today_btn = Button.new()
+	calendar_today_btn.name = "Calendar_Today"
+	calendar_today_btn.text = "📅"
+	calendar_today_btn.flat = true
+	calendar_today_btn.focus_mode = Control.FOCUS_NONE
+	calendar_today_btn.tooltip_text = "Jump to current month"
+	calendar_today_btn.custom_minimum_size = Vector2(28, 28)
+	calendar_today_btn.pressed.connect(_on_calendar_jump_to_present)
+
+	calendar_next_btn = Button.new()
+	calendar_next_btn.name = "Calendar_Next"
+	calendar_next_btn.text = "›"
+	calendar_next_btn.flat = true
+	calendar_next_btn.focus_mode = Control.FOCUS_NONE
+	calendar_next_btn.tooltip_text = "Next month"
+	calendar_next_btn.custom_minimum_size = Vector2(28, 28)
+	calendar_next_btn.pressed.connect(_on_calendar_next_month)
+
+	calendar_header_row.add_child(calendar_prev_btn)
+	calendar_header_row.add_child(calendar_month_title)
+	calendar_header_row.add_child(calendar_today_btn)
+	calendar_header_row.add_child(calendar_next_btn)
+
+	calendar_month_grid = GridContainer.new()
+	calendar_month_grid.name = "Calendar_Month_Grid"
+	calendar_month_grid.columns = MONTH_GRID_COLS
+	calendar_month_grid.add_theme_constant_override("h_separation", 3)
+	calendar_month_grid.add_theme_constant_override("v_separation", 3)
+	calendar_month_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var cal_detail_parts := _make_detail_panel()
+	calendar_detail_box = cal_detail_parts["panel"]
+	calendar_detail_label = cal_detail_parts["label"]
+	root.add_child(calendar_header_row)
+	root.add_child(calendar_month_grid)
+	root.add_child(calendar_detail_box)
+	margin.add_child(root)
+	calendar_dock.add_child(margin)
+	_set_calendar_detail_text("Select a day for event details.")
+	_reset_calendar_view_to_present()
+	refresh_calendar_dock()
+
+
+func _reset_calendar_view_to_present() -> void:
+	var info: Dictionary = FarmDataManager.get_current_date_info()
+	_calendar_view_year = int(info["year"])
+	_calendar_view_month_index = int(info["month_index"])
+
+
+func _is_viewing_present_month() -> bool:
+	var info: Dictionary = FarmDataManager.get_current_date_info()
+	return _calendar_view_year == int(info["year"]) \
+		and _calendar_view_month_index == int(info["month_index"])
+
+
+func _shift_calendar_view(delta_months: int) -> void:
+	_calendar_view_month_index += delta_months
+	while _calendar_view_month_index < 0:
+		_calendar_view_month_index += 12
+		_calendar_view_year -= 1
+	while _calendar_view_month_index >= 12:
+		_calendar_view_month_index -= 12
+		_calendar_view_year += 1
+	_calendar_view_year = maxi(1, _calendar_view_year)
+	refresh_calendar_dock()
+
+
+func _on_calendar_prev_month() -> void:
+	_shift_calendar_view(-1)
+
+
+func _on_calendar_next_month() -> void:
+	_shift_calendar_view(1)
+
+
+func _on_calendar_jump_to_present() -> void:
+	_reset_calendar_view_to_present()
+	refresh_calendar_dock()
+	_set_calendar_detail_text("Back to the present month.")
+
+
+func _make_detail_panel() -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size = Vector2(0, 88)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.1, 0.12, 0.95)
+	style.set_corner_radius_all(4)
+	style.set_border_width_all(1)
+	style.border_color = Color(0.32, 0.36, 0.4, 0.9)
+	panel.add_theme_stylebox_override("panel", style)
+	var detail_margin := MarginContainer.new()
+	detail_margin.name = "DetailMargin"
+	detail_margin.add_theme_constant_override("margin_left", 8)
+	detail_margin.add_theme_constant_override("margin_right", 8)
+	detail_margin.add_theme_constant_override("margin_top", 8)
+	detail_margin.add_theme_constant_override("margin_bottom", 8)
+	var lbl := RichTextLabel.new()
+	lbl.bbcode_enabled = true
+	lbl.fit_content = true
+	lbl.scroll_active = false
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_margin.add_child(lbl)
+	panel.add_child(detail_margin)
+	return {"panel": panel, "label": lbl}
+
+
+func _configure_grid_icon_button(btn: Button) -> void:
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.expand_icon = true
+	btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	btn.add_theme_font_size_override("font_size", 10)
+	btn.custom_minimum_size = Vector2(48, 52)
+
+
+func refresh_info_dock(forecast: Array) -> void:
+	refresh_weather_dock(forecast)
+	refresh_calendar_dock()
+
+
+func build_forecast_calendar(forecast: Array) -> void:
+	refresh_info_dock(forecast)
+
+
+func _forecast_confidence_percent(day_offset: int, target_turn: int) -> int:
+	if day_offset < ACCURATE_FORECAST_DAYS:
+		return 100
+	var rng := RandomNumberGenerator.new()
+	rng.seed = target_turn
+	return rng.randi_range(30, 85)
+
+
+func refresh_weather_dock(forecast: Array) -> void:
+	if not is_instance_valid(weather_grid):
+		return
+
+	for child in weather_grid.get_children():
+		child.queue_free()
+
+	var padded: Array[String] = []
+	for i in range(FORECAST_DAYS):
+		if i < forecast.size():
+			padded.append(str(forecast[i]))
+		else:
+			padded.append("clear")
+
+	for i in range(FORECAST_DAYS):
+		var weather_id := padded[i].strip_edges().to_lower()
+		if weather_id == "drought":
+			weather_id = "dry"
+		var target_turn := FarmDataManager.current_turn + i
+		var date_info: Dictionary = FarmDataManager.get_current_date_info(target_turn)
+		var weekday: String = str(date_info["weekday"])
+		var day_num: int = int(date_info["day_of_month"])
+		var accurate := i < ACCURATE_FORECAST_DAYS
+		var prob := _forecast_confidence_percent(i, target_turn)
+		var emoji: String = str(WEATHER_EMOJI.get(weather_id, "☀️"))
+		var line2 := emoji if accurate else "%d%% %s" % [prob, emoji]
+		var label := "%s %d\n%s" % [weekday, day_num, line2]
+		var btn := Button.new()
+		_configure_grid_icon_button(btn)
+		btn.text = label
+		btn.tooltip_text = FarmDataManager.format_calendar_date(target_turn)
+		btn.modulate.a = 1.0 if accurate else 0.6
+		btn.pressed.connect(_on_weather_day_clicked.bind(i, weather_id, date_info, prob))
+		weather_grid.add_child(btn)
+
+	if padded.size() > 0:
+		var first_id := padded[0].strip_edges().to_lower()
+		if first_id == "drought":
+			first_id = "dry"
+		var first_info: Dictionary = FarmDataManager.get_current_date_info(FarmDataManager.current_turn)
+		_on_weather_day_clicked(0, first_id, first_info, 100)
+
+
+func refresh_calendar_dock() -> void:
+	if not is_instance_valid(calendar_month_grid):
+		return
+
+	FarmDataManager.sync_calendar_state()
+	var present: Dictionary = FarmDataManager.get_current_date_info()
+	var year := _calendar_view_year
+	var month_index := _calendar_view_month_index
+	var viewing_present := _is_viewing_present_month()
+	var today_day: int = int(present["day_of_month"]) if viewing_present else -1
+
+	if is_instance_valid(calendar_month_title):
+		calendar_month_title.text = FarmDataManager.format_month_year(year, month_index)
+		calendar_month_title.tooltip_text = "%s · %s" % [
+			FarmDataManager.get_month_season_name(month_index),
+			FarmDataManager.get_coarse_season(
+				FarmDataManager.turn_for_month_day(year, month_index, 1)
+			),
+		]
+	if is_instance_valid(calendar_today_btn):
+		calendar_today_btn.modulate.a = 0.45 if viewing_present else 1.0
+
+	for child in calendar_month_grid.get_children():
+		child.queue_free()
+
+	for wd in FarmDataManager.WEEKDAYS:
+		var hdr := Label.new()
+		hdr.text = wd
+		hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hdr.add_theme_font_size_override("font_size", 10)
+		hdr.add_theme_color_override("font_color", Color(0.55, 0.57, 0.6, 1.0))
+		hdr.custom_minimum_size = Vector2(34, 16)
+		calendar_month_grid.add_child(hdr)
+
+	var month_start_turn := FarmDataManager.turn_for_month_day(year, month_index, 1)
+	var start_weekday_idx := (month_start_turn - 1) % FarmDataManager.WEEKDAYS.size()
+	for _i in range(start_weekday_idx):
+		var pad := Control.new()
+		pad.custom_minimum_size = Vector2(34, 34)
+		pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		calendar_month_grid.add_child(pad)
+
+	for day in range(1, MONTH_DAYS + 1):
+		var abs_turn := FarmDataManager.turn_for_month_day(year, month_index, day)
+		var btn := Button.new()
+		_configure_grid_icon_button(btn)
+		btn.custom_minimum_size = Vector2(34, 40)
+		var btn_text := str(day)
+		if not FarmDataManager.get_community_event(abs_turn).is_empty():
+			btn_text += "\n⭐"
+		btn.text = btn_text
+		if day == today_day:
+			var today_style := StyleBoxFlat.new()
+			today_style.bg_color = Color(0.18, 0.32, 0.18, 1.0)
+			today_style.border_color = Color(1.0, 0.92, 0.25, 0.95)
+			today_style.set_border_width_all(2)
+			today_style.set_corner_radius_all(3)
+			today_style.content_margin_left = 4.0
+			today_style.content_margin_top = 4.0
+			today_style.content_margin_right = 4.0
+			today_style.content_margin_bottom = 4.0
+			btn.add_theme_stylebox_override("normal", today_style)
+			btn.add_theme_stylebox_override("hover", today_style)
+			btn.add_theme_stylebox_override("pressed", today_style)
+		btn.pressed.connect(_on_calendar_day_clicked.bind(abs_turn))
+		calendar_month_grid.add_child(btn)
+
+
+func _on_weather_day_clicked(day_offset: int, weather_id: String, date_info: Dictionary, prob: int) -> void:
+	var weekday: String = str(date_info.get("weekday", ""))
+	var day_num: int = int(date_info.get("day_of_month", 0))
+	var flavor: String = str(WEATHER_FLAVOR.get(weather_id, "A steady day on the farm."))
+	var certainty := "[color=green]✓ 100% Guaranteed[/color]" if day_offset < ACCURATE_FORECAST_DAYS \
+		else "[color=orange]~ %d%% Chance (Looking Ahead)[/color]" % prob
+	var bb := "[b]Weather for %s, %d[/b]\n" % [weekday, day_num]
+	bb += certainty + "\n\n"
+	bb += flavor
+	_set_weather_detail_text(bb)
+
+
+func _on_calendar_day_clicked(absolute_turn: int) -> void:
+	var info: Dictionary = FarmDataManager.get_current_date_info(absolute_turn)
+	var event_name := FarmDataManager.get_community_event(absolute_turn)
+	var bb := "[b]%s[/b] [color=#a5d6a7](%s · %s)[/color]\n" % [
+		FarmDataManager.format_calendar_date(absolute_turn),
+		str(info.get("season_name", "")),
+		FarmDataManager.get_coarse_season(absolute_turn),
+	]
+	bb += "%s · Turn %d\n" % [str(info["weekday"]), absolute_turn]
+	if event_name.is_empty():
+		bb += "\n[color=#888888]No community events scheduled.[/color]"
+	else:
+		bb += "\n[color=#ffe082]⭐ %s[/color]" % event_name
+	_set_calendar_detail_text(bb)
+
+
+func _set_weather_detail_text(bbcode: String) -> void:
+	if is_instance_valid(weather_detail_label):
+		weather_detail_label.text = bbcode
+
+
+func _set_calendar_detail_text(bbcode: String) -> void:
+	if is_instance_valid(calendar_detail_label):
+		calendar_detail_label.text = bbcode
+
+
 func _setup_top_bar() -> void:
 	push_warning("HUD: _setup_top_bar is deprecated; use _setup_status_strip")
 	_setup_status_strip()
 
 
 func flash_forecast_attention() -> void:
-	if not is_instance_valid(forecast_events_header):
-		return
-	var base_color: Color = forecast_events_header.get_theme_color("font_color")
+	var tab_btn: Button = _edge_tabs.get(weather_dock, null) as Button
+	if not is_instance_valid(tab_btn):
+		if not is_instance_valid(forecast_events_header):
+			return
+		tab_btn = null
+	var base_color: Color
+	if is_instance_valid(tab_btn):
+		base_color = tab_btn.get_theme_color("font_color")
+	else:
+		base_color = forecast_events_header.get_theme_color("font_color")
 	var tween := create_tween()
 	tween.set_loops(3)
 	tween.tween_callback(func() -> void:
-		forecast_events_header.add_theme_color_override("font_color", Color(1.0, 0.92, 0.25))
+		if is_instance_valid(tab_btn):
+			tab_btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.25))
+		if is_instance_valid(forecast_events_header):
+			forecast_events_header.add_theme_color_override("font_color", Color(1.0, 0.92, 0.25))
 	)
 	tween.tween_interval(0.18)
 	tween.tween_callback(func() -> void:
-		forecast_events_header.add_theme_color_override("font_color", base_color)
+		if is_instance_valid(tab_btn):
+			tab_btn.add_theme_color_override("font_color", base_color)
+		if is_instance_valid(forecast_events_header):
+			forecast_events_header.add_theme_color_override("font_color", base_color)
 	)
 	tween.tween_interval(0.18)
 
@@ -1680,6 +2234,9 @@ func update_weather_display(season: String, desc: String, is_dry: bool) -> void:
 		season_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 		if panel_sb:
 			panel_sb.border_color = Color(0.2, 0.3, 0.2)
+	var map_node: Node = get_tree().get_first_node_in_group("map")
+	if map_node and "forecast" in map_node:
+		refresh_info_dock(map_node.forecast)
 
 
 func show_tool(tool_name: String) -> void:
@@ -1687,7 +2244,9 @@ func show_tool(tool_name: String) -> void:
 		return
 	if is_instance_valid(inspector_panel):
 		_set_sidebar_panel_visible(inspector_panel, true)
-	inspector_icon.texture = null # We can add tool icons later
+	_clear_inspector_plant_sprites()
+	if is_instance_valid(inspector_icon):
+		inspector_icon.texture = null
 	var text = "[b][color=#ffe082]ACTIVE TOOL[/color][/b]\n\n"
 	text += "[font_size=24]%s[/font_size]\n" % tool_name.capitalize().replace("_", " ")
 	inspector_label.text = text
@@ -1704,7 +2263,7 @@ func _format_role_name(raw_name: String) -> String:
 func show_tile(x: int, y: int, cell_data: Dictionary, atlas_tex: Texture2D) -> void:
 	if is_instance_valid(inspector_panel):
 		_set_sidebar_panel_visible(inspector_panel, true)
-	inspector_icon.texture = atlas_tex
+	_update_inspector_preview(cell_data, atlas_tex)
 
 	if not is_instance_valid(inspector_label):
 		update_soil_inspector(build_soil_inspector_stats(cell_data))
@@ -1779,9 +2338,8 @@ func show_tile(x: int, y: int, cell_data: Dictionary, atlas_tex: Texture2D) -> v
 			text += "\n[color=#888888]This tile is not currently part of any active Guild or Superguild network.[/color]"
 
 		inspector_label.text = text
-		
-		# CRITICAL: Return immediately so we don't append the standard soil stats!
-		return 
+		update_soil_inspector(build_soil_inspector_stats(cell_data))
+		return
 	# --- END GUILD INSPECTOR OVERRIDE ---
 
 	var tags = cell_data.get("soil_tags", ["clay"])
@@ -1839,9 +2397,76 @@ func show_tile(x: int, y: int, cell_data: Dictionary, atlas_tex: Texture2D) -> v
 	else:
 		text += "[color=#757575]No plants growing here.[/color]"
 
+	var death_history := FarmDataManager.format_plant_death_log(cell_data)
+	if death_history != "":
+		text += "\n\n" + death_history
+
 	inspector_label.text = text
 
 	update_soil_inspector(build_soil_inspector_stats(cell_data))
+
+
+func _get_flora_atlas_texture() -> Texture2D:
+	if is_instance_valid(_inspector_flora_atlas_tex):
+		return _inspector_flora_atlas_tex
+	var meta := PlantGrowth.flora_atlas_meta()
+	var path := str(meta.get("atlas_path", "res://assets/base/sprites/atlas/flora_atlas.png"))
+	if ResourceLoader.exists(path):
+		_inspector_flora_atlas_tex = load(path) as Texture2D
+	return _inspector_flora_atlas_tex
+
+
+func _clear_inspector_plant_sprites() -> void:
+	for rect in [
+		inspector_ground_rect,
+		inspector_understory_rect,
+		inspector_canopy_shadow_rect,
+		inspector_canopy_rect,
+	]:
+		if is_instance_valid(rect):
+			rect.texture = null
+			rect.visible = false
+
+
+func _flora_atlas_texture_for_cell(layer_key: String, cell_data: Dictionary) -> Texture2D:
+	var p_id := str(cell_data.get(layer_key, ""))
+	if p_id == "":
+		return null
+	var atlas_tex := _get_flora_atlas_texture()
+	if atlas_tex == null:
+		return null
+	var tile_sz := int(PlantGrowth.flora_atlas_meta().get("tile_size", 200))
+	var plant_age := float(cell_data.get("%s_age" % layer_key, 0.0))
+	var growth_stage := PlantGrowth.growth_stage(p_id, plant_age)
+	var coord := PlantGrowth.flora_atlas_coord(p_id, growth_stage)
+	if coord.x < 0:
+		return null
+	var layer_tex := AtlasTexture.new()
+	layer_tex.atlas = atlas_tex
+	layer_tex.region = Rect2(coord.x * tile_sz, coord.y * tile_sz, tile_sz, tile_sz)
+	return layer_tex
+
+
+func _update_inspector_preview(cell_data: Dictionary, terrain_tex: Texture2D) -> void:
+	if is_instance_valid(inspector_icon):
+		inspector_icon.texture = terrain_tex
+	_clear_inspector_plant_sprites()
+	if is_instance_valid(inspector_ground_rect):
+		var ground_tex := _flora_atlas_texture_for_cell("ground", cell_data)
+		inspector_ground_rect.texture = ground_tex
+		inspector_ground_rect.visible = ground_tex != null
+	if is_instance_valid(inspector_understory_rect):
+		var understory_tex := _flora_atlas_texture_for_cell("understory", cell_data)
+		inspector_understory_rect.texture = understory_tex
+		inspector_understory_rect.visible = understory_tex != null
+	if is_instance_valid(inspector_canopy_rect):
+		var canopy_tex := _flora_atlas_texture_for_cell("canopy", cell_data)
+		inspector_canopy_rect.texture = canopy_tex
+		inspector_canopy_rect.visible = canopy_tex != null
+	if is_instance_valid(inspector_canopy_shadow_rect):
+		var shadow_tex := _flora_atlas_texture_for_cell("canopy", cell_data)
+		inspector_canopy_shadow_rect.texture = shadow_tex
+		inspector_canopy_shadow_rect.visible = shadow_tex != null
 
 
 func build_soil_inspector_stats(cell: Dictionary) -> Dictionary:
@@ -1888,6 +2513,7 @@ func build_soil_inspector_stats(cell: Dictionary) -> Dictionary:
 			"minerals": [p_min_min, p_max_min],
 		}
 
+	stats["forecast"] = PlantNutrientForecast.compute(cell)
 	return stats
 
 
@@ -1938,7 +2564,7 @@ func update_minimap(tex: Texture2D) -> void:
 func _add_pause_settings_button(
 	pause_vbox: VBoxContainer,
 	label: String,
-	panel_script: Script,
+	settings_scroll: ScrollContainer,
 	insert_before_index: int
 ) -> void:
 	var btn := Button.new()
@@ -1946,36 +2572,56 @@ func _add_pause_settings_button(
 	btn.focus_mode = Control.FOCUS_NONE
 	pause_vbox.add_child(btn)
 	pause_vbox.move_child(btn, insert_before_index)
-	btn.pressed.connect(func() -> void: _open_pause_settings_panel(panel_script))
+	btn.pressed.connect(func() -> void: _show_pause_subpanel(settings_scroll))
 
 
-func _open_pause_settings_panel(panel_script: Script) -> void:
-	var wrapper := PanelContainer.new()
-	wrapper.process_mode = Node.PROCESS_MODE_ALWAYS
-	wrapper.custom_minimum_size = Vector2(460, 540)
-	wrapper.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	var wrap_style := StyleBoxFlat.new()
-	wrap_style.bg_color = Color(0.08, 0.08, 0.1, 0.98)
-	wrap_style.set_corner_radius_all(8)
-	wrap_style.set_border_width_all(2)
-	wrap_style.border_color = Color(0.35, 0.45, 0.55)
-	wrapper.add_theme_stylebox_override("panel", wrap_style)
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
+func _setup_pause_settings_panels() -> void:
+	var panel_root := pause_main_vbox.get_parent() as PanelContainer
+	if not panel_root:
+		return
+	pause_audio_scroll = _make_pause_settings_scroll(preload("res://scripts/ui_audio_panel.gd"))
+	pause_graphics_scroll = _make_pause_settings_scroll(preload("res://scripts/ui_graphics_panel.gd"))
+	pause_gameplay_scroll = _make_pause_settings_scroll(preload("res://scripts/ui_gameplay_panel.gd"))
+	for scroll in [pause_audio_scroll, pause_graphics_scroll, pause_gameplay_scroll]:
+		panel_root.add_child(scroll)
+
+
+func _make_pause_settings_scroll(panel_script: Script) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
+	scroll.custom_minimum_size = Vector2(420, 480)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.hide()
 	var panel: Control = panel_script.new()
 	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	scroll.add_child(panel)
+	if panel.has_signal("back_pressed"):
+		panel.back_pressed.connect(_show_pause_main_menu)
+	return scroll
+
+
+func _show_pause_subpanel(scroll: ScrollContainer) -> void:
+	if not is_instance_valid(scroll) or scroll.get_child_count() == 0:
+		return
+	var panel := scroll.get_child(0) as Control
 	if panel.has_method("sync_controls_from_farm"):
 		panel.sync_controls_from_farm()
 	elif panel.has_method("sync_controls_from_system"):
 		panel.sync_controls_from_system()
-	margin.add_child(panel)
-	wrapper.add_child(margin)
-	$CanvasLayer.add_child(wrapper)
-	if panel.has_signal("back_pressed"):
-		panel.back_pressed.connect(func(): wrapper.queue_free())
+	if is_instance_valid(pause_main_vbox):
+		pause_main_vbox.hide()
+	for s in [pause_audio_scroll, pause_graphics_scroll, pause_gameplay_scroll]:
+		if is_instance_valid(s):
+			s.hide()
+	scroll.show()
+
+
+func _show_pause_main_menu() -> void:
+	for s in [pause_audio_scroll, pause_graphics_scroll, pause_gameplay_scroll]:
+		if is_instance_valid(s):
+			s.hide()
+	if is_instance_valid(pause_main_vbox):
+		pause_main_vbox.show()
 
 
 func _inject_settings_into_pause_menu() -> void:
@@ -2059,11 +2705,46 @@ func _setup_inspector_ui() -> void:
 	content_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_vbox.add_theme_constant_override("separation", 10)
 
+	inspector_preview_box = Control.new()
+	inspector_preview_box.name = "InspectorDiorama"
+	inspector_preview_box.custom_minimum_size = Vector2(200, 200)
+	inspector_preview_box.clip_contents = true
+	inspector_preview_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+
 	inspector_icon = TextureRect.new()
-	inspector_icon.custom_minimum_size = Vector2(200, 200)
+	inspector_icon.name = "TerrainPreview"
+	inspector_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	inspector_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	inspector_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	content_vbox.add_child(inspector_icon)
+	inspector_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspector_preview_box.add_child(inspector_icon)
+
+	inspector_understory_rect = _make_inspector_diorama_rect("understory_rect")
+	inspector_understory_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inspector_understory_rect.scale = Vector2(1.0, 1.0)
+	inspector_understory_rect.position = Vector2.ZERO
+	inspector_preview_box.add_child(inspector_understory_rect)
+
+	inspector_canopy_shadow_rect = _make_inspector_diorama_rect("canopy_shadow_rect")
+	inspector_canopy_shadow_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inspector_canopy_shadow_rect.modulate = Color(0, 0, 0, 0.5)
+	inspector_canopy_shadow_rect.scale = Vector2(1.15, 1.15)
+	inspector_canopy_shadow_rect.position = Vector2(-30, -40)
+	inspector_preview_box.add_child(inspector_canopy_shadow_rect)
+
+	inspector_canopy_rect = _make_inspector_diorama_rect("canopy_rect")
+	inspector_canopy_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inspector_canopy_rect.scale = Vector2(1.15, 1.15)
+	inspector_canopy_rect.position = Vector2(-35, -45)
+	inspector_preview_box.add_child(inspector_canopy_rect)
+
+	inspector_ground_rect = _make_inspector_diorama_rect("ground_rect")
+	inspector_ground_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inspector_ground_rect.scale = Vector2(1.0, 1.0)
+	inspector_ground_rect.position = Vector2.ZERO
+	inspector_preview_box.add_child(inspector_ground_rect)
+
+	content_vbox.add_child(inspector_preview_box)
 
 	inspector_label = RichTextLabel.new()
 	inspector_label.custom_minimum_size = Vector2(280, 150)
@@ -2082,6 +2763,16 @@ func _setup_inspector_ui() -> void:
 
 	margin.add_child(main_vbox)
 	inspector_panel.add_child(margin)
+
+
+func _make_inspector_diorama_rect(node_name: String) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.name = node_name
+	rect.visible = false
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect
 
 
 func _setup_queue_ui() -> void:
@@ -2335,28 +3026,45 @@ func _setup_sidebar_docks() -> void:
 	_layout_sidebar_docks()
 
 
+## Resting horizontal offsets for a dock: tucked behind its edge-tab strip when closed,
+## flush beside it when open (Civ-style pop-out).
+func _dock_rest_offsets(from_left: bool, open: bool) -> Vector2:
+	var w := float(UISidebarDock.WIDTH)
+	var shown_l := EDGE_TAB_W if from_left else -(EDGE_TAB_W + w)
+	var shown_r := (EDGE_TAB_W + w) if from_left else -EDGE_TAB_W
+	if open:
+		return Vector2(shown_l, shown_r)
+	var dir := -1.0 if from_left else 1.0
+	return Vector2(shown_l + dir * w, shown_r + dir * w)
+
+
 func _layout_sidebar_docks() -> void:
 	if not is_instance_valid(left_sidebar_dock) or not is_instance_valid(right_sidebar_dock):
 		return
 	var top := 84.0
 	if is_instance_valid(political_metrics_bar) and political_metrics_bar.visible:
 		top = 120.0
-	var bottom := 128.0
-	var w := float(UISidebarDock.WIDTH)
+	var bottom := int(BOTTOM_TOOLBAR_H) + 2
 
+	var l_open := bool(_dock_open.get(left_sidebar_dock, false))
+	var lo := _dock_rest_offsets(true, l_open)
 	left_sidebar_dock.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	left_sidebar_dock.anchor_bottom = 1.0
-	left_sidebar_dock.offset_left = 0.0
-	left_sidebar_dock.offset_right = w
+	left_sidebar_dock.offset_left = lo.x
+	left_sidebar_dock.offset_right = lo.y
 	left_sidebar_dock.offset_top = top
 	left_sidebar_dock.offset_bottom = -bottom
+	left_sidebar_dock.visible = l_open
 
+	var r_open := bool(_dock_open.get(right_sidebar_dock, false))
+	var ro := _dock_rest_offsets(false, r_open)
 	right_sidebar_dock.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	right_sidebar_dock.anchor_bottom = 1.0
-	right_sidebar_dock.offset_left = -w
-	right_sidebar_dock.offset_right = 0.0
+	right_sidebar_dock.offset_left = ro.x
+	right_sidebar_dock.offset_right = ro.y
 	right_sidebar_dock.offset_top = top
 	right_sidebar_dock.offset_bottom = -bottom
+	right_sidebar_dock.visible = r_open
 
 
 func _raise_hud_chrome() -> void:
@@ -2552,15 +3260,36 @@ func _mount_panels_into_sidebars() -> void:
 	if MetaManager.dev_mode and is_instance_valid(dev_panel):
 		_dock_panel_to_sidebar(dev_panel, UISidebarDock.DockSide.LEFT, "Dev Console", 1)
 	_dock_panel_to_sidebar(inspector_panel, UISidebarDock.DockSide.RIGHT, "Tile Inspector", 0)
-	_dock_panel_to_sidebar(info_dock_panel, UISidebarDock.DockSide.RIGHT, "InfoDock", 1)
-	_dock_panel_to_sidebar(minimap_panel, UISidebarDock.DockSide.RIGHT, "Ecology Scanner", 2)
-	_dock_panel_to_sidebar(queue_panel, UISidebarDock.DockSide.RIGHT, "Today's Plan", 3)
-	# Default visibility: core panels on; queue hidden until used.
-	_set_sidebar_panel_visible(info_dock_panel, true)
-	_set_sidebar_panel_visible(inspector_panel, true)
-	_set_sidebar_panel_visible(workers_window, true)
-	_set_sidebar_panel_visible(minimap_panel, true)
+	_dock_panel_to_sidebar(weather_dock, UISidebarDock.DockSide.RIGHT, "Weather", 1)
+	_dock_panel_to_sidebar(calendar_dock, UISidebarDock.DockSide.RIGHT, "Calendar", 2)
+	_dock_panel_to_sidebar(info_dock_panel, UISidebarDock.DockSide.RIGHT, "Farm Dashboard", 3)
+	_dock_panel_to_sidebar(minimap_panel, UISidebarDock.DockSide.RIGHT, "Ecology Scanner", 4)
+	_dock_panel_to_sidebar(queue_panel, UISidebarDock.DockSide.RIGHT, "Today's Plan", 5)
+
+	# Civ-style edge tabs: panels start collapsed to symbols; clicking pops them out.
+	_setup_edge_tab_strips()
+	_register_edge_tab(workers_window, "👥", "Farm Hands", UISidebarDock.DockSide.LEFT, "farm_hands")
+	if MetaManager.dev_mode and is_instance_valid(dev_panel):
+		_register_edge_tab(dev_panel, "🛠", "Dev Console", UISidebarDock.DockSide.LEFT, "dev_console")
+	_register_edge_tab(inspector_panel, "🔍", "Tile Inspector", UISidebarDock.DockSide.RIGHT, "tile_inspector")
+	_register_edge_tab(weather_dock, "🌦️", "Weather Forecast", UISidebarDock.DockSide.RIGHT)
+	_register_edge_tab(calendar_dock, "📅", "Calendar", UISidebarDock.DockSide.RIGHT)
+	_register_edge_tab(info_dock_panel, "📋", "Farm Dashboard", UISidebarDock.DockSide.RIGHT)
+	_register_edge_tab(minimap_panel, "🗺", "Ecology Scanner", UISidebarDock.DockSide.RIGHT, "ecology_scanner")
+	_register_edge_tab(queue_panel, "📝", "Today's Plan", UISidebarDock.DockSide.RIGHT, "todays_plan")
+	_finalize_edge_tab_strips()
+
+	# Everything collapsed by default — maximum playfield, Civ-style.
+	_set_sidebar_panel_visible(workers_window, false)
+	if is_instance_valid(dev_panel):
+		_set_sidebar_panel_visible(dev_panel, false)
+	_set_sidebar_panel_visible(info_dock_panel, false)
+	_set_sidebar_panel_visible(weather_dock, false)
+	_set_sidebar_panel_visible(calendar_dock, false)
+	_set_sidebar_panel_visible(inspector_panel, false)
+	_set_sidebar_panel_visible(minimap_panel, false)
 	_set_sidebar_panel_visible(queue_panel, false)
+	_layout_sidebar_docks()
 	_setup_sidebar_drag_controller()
 
 
@@ -2594,7 +3323,7 @@ func _dock_panel_to_sidebar(
 	widget.mount_content(panel)
 	dock.add_widget(widget, order)
 	_panel_sidebar_widgets[panel] = widget
-	widget.close_requested.connect(func() -> void: panel.hide())
+	widget.close_requested.connect(func() -> void: _set_sidebar_panel_visible(panel, false))
 
 
 func _strip_floating_chrome(panel: Control) -> void:
@@ -2638,10 +3367,318 @@ func _focus_sidebar_panel(panel: Control, side: UISidebarDock.DockSide) -> void:
 func _set_sidebar_panel_visible(panel: Control, show: bool) -> void:
 	if not is_instance_valid(panel):
 		return
+	if show and panel == calendar_dock:
+		_reset_calendar_view_to_present()
+		refresh_calendar_dock()
 	var widget: UISidebarWidget = _panel_sidebar_widgets.get(panel, null)
 	if widget:
 		widget.visible = show
 	panel.visible = show
+	var tab: Button = _edge_tabs.get(panel, null)
+	if is_instance_valid(tab):
+		tab.set_pressed_no_signal(show)
+		_apply_edge_tab_style(tab, show)
+	var side: Variant = _panel_dock_side.get(panel, null)
+	if side != null:
+		_refresh_edge_strip_ui(side as UISidebarDock.DockSide)
+	_refresh_dock_slides()
+
+
+# ============================================================
+# CIV-STYLE EDGE TABS — collapsed symbols that pop panels out
+# ============================================================
+
+func _setup_edge_tab_strips() -> void:
+	for side in [UISidebarDock.DockSide.LEFT, UISidebarDock.DockSide.RIGHT]:
+		var strip := VBoxContainer.new()
+		strip.name = "EdgeTabsLeft" if side == UISidebarDock.DockSide.LEFT else "EdgeTabsRight"
+		strip.add_theme_constant_override("separation", 6)
+		$CanvasLayer.add_child(strip)
+		strip.z_index = Z_SIDEBAR + 1
+		_edge_tab_strips[side] = strip
+	_layout_edge_tab_strips()
+
+
+func _layout_edge_tab_strips() -> void:
+	var vp := get_viewport_rect().size
+	for side in _edge_tab_strips:
+		var strip: VBoxContainer = _edge_tab_strips[side]
+		if not is_instance_valid(strip):
+			continue
+		strip.reset_size()
+		var y := (vp.y - strip.size.y) / 2.0
+		if side == UISidebarDock.DockSide.LEFT:
+			strip.position = Vector2(2.0, y)
+		else:
+			strip.position = Vector2(vp.x - strip.size.x - 2.0, y)
+
+
+func _edge_tab_style(selected: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.13, 0.11, 0.92)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(4)
+	if selected:
+		sb.set_border_width_all(3)
+		sb.border_color = EDGE_TAB_YELLOW
+	else:
+		sb.set_border_width_all(1)
+		sb.border_color = Color(0.35, 0.38, 0.32, 0.65)
+	return sb
+
+
+func _apply_edge_tab_style(btn: Button, selected: bool) -> void:
+	var sb := _edge_tab_style(selected)
+	btn.add_theme_stylebox_override("normal", sb)
+	btn.add_theme_stylebox_override("pressed", sb)
+	btn.add_theme_stylebox_override("hover", sb)
+	btn.add_theme_stylebox_override("focus", sb)
+
+
+func _side_has_open_panel(side: UISidebarDock.DockSide) -> bool:
+	for panel in _edge_tabs:
+		if _panel_dock_side.get(panel) != side:
+			continue
+		var tab: Button = _edge_tabs[panel]
+		if is_instance_valid(tab) and tab.button_pressed:
+			return true
+	return false
+
+
+func _refresh_edge_strip_ui(side: UISidebarDock.DockSide) -> void:
+	for panel in _edge_tabs:
+		if _panel_dock_side.get(panel) != side:
+			continue
+		var tab: Button = _edge_tabs[panel]
+		if is_instance_valid(tab):
+			_apply_edge_tab_style(tab, tab.button_pressed)
+	var close_btn: Button = _edge_close_btns.get(side, null)
+	if is_instance_valid(close_btn):
+		close_btn.visible = _side_has_open_panel(side)
+
+
+func _close_all_on_side(side: UISidebarDock.DockSide) -> void:
+	for panel in _edge_tabs.duplicate():
+		if _panel_dock_side.get(panel) == side:
+			_set_sidebar_panel_visible(panel, false)
+
+
+func _finalize_edge_tab_strips() -> void:
+	for side in _edge_tab_strips:
+		var strip: VBoxContainer = _edge_tab_strips[side]
+		if not is_instance_valid(strip) or _edge_close_btns.has(side):
+			continue
+		var close_btn := Button.new()
+		close_btn.name = "CloseAll"
+		close_btn.text = "×"
+		close_btn.tooltip_text = "Close all panels on this side"
+		close_btn.focus_mode = Control.FOCUS_NONE
+		close_btn.custom_minimum_size = Vector2(EDGE_TAB_W, 32.0)
+		close_btn.add_theme_font_size_override("font_size", 20)
+		close_btn.add_theme_color_override("font_color", EDGE_TAB_YELLOW)
+		var close_sb := StyleBoxFlat.new()
+		close_sb.bg_color = Color(0.1, 0.1, 0.1, 0.85)
+		close_sb.set_corner_radius_all(4)
+		close_sb.set_border_width_all(1)
+		close_sb.border_color = Color(0.45, 0.45, 0.4, 0.8)
+		close_btn.add_theme_stylebox_override("normal", close_sb)
+		close_btn.add_theme_stylebox_override("hover", close_sb)
+		close_btn.add_theme_stylebox_override("pressed", close_sb)
+		close_btn.visible = false
+		close_btn.pressed.connect(_close_all_on_side.bind(side))
+		MapScrollBlockerUtil.tag_control_tree(close_btn)
+		strip.add_child(close_btn)
+		_edge_close_btns[side] = close_btn
+	_layout_edge_tab_strips()
+
+
+func _register_edge_tab(
+	panel: Control,
+	glyph: String,
+	title: String,
+	side: UISidebarDock.DockSide,
+	icon_key: String = ""
+) -> void:
+	if not is_instance_valid(panel) or _edge_tabs.has(panel):
+		return
+	var strip: VBoxContainer = _edge_tab_strips.get(side, null)
+	if strip == null:
+		return
+	var btn := Button.new()
+	btn.tooltip_text = title
+	btn.toggle_mode = true
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.custom_minimum_size = Vector2(EDGE_TAB_W, EDGE_TAB_W)
+	var has_icon := icon_key != "" and HudIcons.apply_button_icon(
+		btn, icon_key, "", HudIcons.EDGE_TAB_ICON_PX
+	)
+	if not has_icon:
+		btn.text = glyph
+		btn.add_theme_font_size_override("font_size", 22)
+	_apply_edge_tab_style(btn, false)
+	btn.toggled.connect(func(pressed: bool) -> void:
+		if pressed:
+			_focus_sidebar_panel(panel, side)
+		else:
+			_set_sidebar_panel_visible(panel, false)
+	)
+	MapScrollBlockerUtil.tag_control_tree(btn)
+	strip.add_child(btn)
+	_edge_tabs[panel] = btn
+	_panel_dock_side[panel] = side
+	_layout_edge_tab_strips()
+
+
+func _dock_has_visible_widget(dock: UISidebarDock) -> bool:
+	if not is_instance_valid(dock):
+		return false
+	for child in dock.get_stack().get_children():
+		if child is UISidebarWidget and (child as Control).visible:
+			return true
+	return false
+
+
+func _refresh_dock_slides() -> void:
+	_slide_dock(left_sidebar_dock, _dock_has_visible_widget(left_sidebar_dock), true)
+	_slide_dock(right_sidebar_dock, _dock_has_visible_widget(right_sidebar_dock), false)
+
+
+## Slide the dock out from behind its edge tabs (show) or tuck it away (hide).
+func _slide_dock(dock: UISidebarDock, show: bool, from_left: bool) -> void:
+	if not is_instance_valid(dock):
+		return
+	if bool(_dock_open.get(dock, false)) == show:
+		return
+	_dock_open[dock] = show
+	var w := float(UISidebarDock.WIDTH)
+	var shown_l := EDGE_TAB_W if from_left else -(EDGE_TAB_W + w)
+	var shown_r := (EDGE_TAB_W + w) if from_left else -EDGE_TAB_W
+	var dir := -1.0 if from_left else 1.0
+	var hidden_l := shown_l + dir * w
+	var hidden_r := shown_r + dir * w
+
+	var old: Tween = _dock_slide_tweens.get(dock, null)
+	if old and old.is_valid():
+		old.kill()
+	var tween := create_tween().set_parallel(true)
+	if show:
+		dock.visible = true
+		dock.offset_left = hidden_l
+		dock.offset_right = hidden_r
+		tween.tween_property(dock, "offset_left", shown_l, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tween.tween_property(dock, "offset_right", shown_r, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		tween.tween_property(dock, "offset_left", hidden_l, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		tween.tween_property(dock, "offset_right", hidden_r, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		tween.chain().tween_callback(func() -> void:
+			if not bool(_dock_open.get(dock, false)):
+				dock.visible = false
+		)
+	_dock_slide_tweens[dock] = tween
+
+
+# ============================================================
+# QUICK-SELECT TOOL WHEEL (hold Tab on the map)
+# ============================================================
+
+func _setup_quick_wheel() -> void:
+	quick_wheel = PanelContainer.new()
+	quick_wheel.name = "QuickWheel"
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.08, 0.1, 0.96)
+	sb.set_corner_radius_all(14)
+	sb.set_border_width_all(2)
+	sb.border_color = Color("aed581")
+	sb.set_content_margin_all(12)
+	quick_wheel.add_theme_stylebox_override("panel", sb)
+	quick_wheel.z_index = 200
+	quick_wheel.hide()
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	quick_wheel.add_child(grid)
+
+	for opt in [
+		["inspect", "Inspect"],
+		["rotovate", "Rotovate"],
+		["water", "Watering Can"],
+		["seeds", "Seed Picker"],
+	]:
+		var tool_id: String = opt[0]
+		var btn := Button.new()
+		btn.text = str(opt[1])
+		btn.custom_minimum_size = Vector2(160, 90)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.add_theme_font_size_override("font_size", 20)
+		btn.mouse_entered.connect(func() -> void: _quick_wheel_hover = tool_id)
+		btn.mouse_exited.connect(func() -> void:
+			if _quick_wheel_hover == tool_id:
+				_quick_wheel_hover = ""
+		)
+		btn.pressed.connect(func() -> void: _select_quick_tool(tool_id))
+		grid.add_child(btn)
+
+	$CanvasLayer.add_child(quick_wheel)
+
+
+## Pop the wheel centred on the cursor (clamped to the viewport).
+func show_quick_wheel(screen_pos: Vector2) -> void:
+	if not is_instance_valid(quick_wheel) or quick_wheel.visible:
+		return
+	_quick_wheel_hover = ""
+	quick_wheel.reset_size()
+	var vp := get_viewport_rect().size
+	var half := quick_wheel.size / 2.0
+	quick_wheel.position = Vector2(
+		clampf(screen_pos.x - half.x, 8.0, maxf(8.0, vp.x - quick_wheel.size.x - 8.0)),
+		clampf(screen_pos.y - half.y, 8.0, maxf(8.0, vp.y - quick_wheel.size.y - 8.0)),
+	)
+	quick_wheel.pivot_offset = half
+	quick_wheel.scale = Vector2(0.85, 0.85)
+	quick_wheel.show()
+	var tween := create_tween()
+	tween.tween_property(quick_wheel, "scale", Vector2.ONE, 0.12) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Tab released: equip whatever the cursor is over, otherwise just close.
+func commit_quick_wheel() -> void:
+	if not is_instance_valid(quick_wheel) or not quick_wheel.visible:
+		return
+	if _quick_wheel_hover != "":
+		_select_quick_tool(_quick_wheel_hover)
+	else:
+		hide_quick_wheel()
+
+
+func hide_quick_wheel() -> void:
+	if is_instance_valid(quick_wheel):
+		quick_wheel.hide()
+	_quick_wheel_hover = ""
+
+
+func _select_quick_tool(tool_id: String) -> void:
+	quick_tool_selected.emit(tool_id)
+	hide_quick_wheel()
+
+
+## Ensure every PanelContainer gives its content at least 12px breathing room.
+func _apply_panel_breathing_room() -> void:
+	for node in find_children("*", "PanelContainer", true, false):
+		var pc := node as PanelContainer
+		if pc == null:
+			continue
+		var sb := pc.get_theme_stylebox("panel")
+		if sb == null:
+			continue
+		var padded: StyleBox = sb.duplicate()
+		padded.content_margin_left = maxf(padded.content_margin_left, 12.0)
+		padded.content_margin_top = maxf(padded.content_margin_top, 12.0)
+		padded.content_margin_right = maxf(padded.content_margin_right, 12.0)
+		padded.content_margin_bottom = maxf(padded.content_margin_bottom, 12.0)
+		pc.add_theme_stylebox_override("panel", padded)
 
 
 func _organize_docks(_dragged_node: Node = null) -> void:

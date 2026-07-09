@@ -1,0 +1,309 @@
+Plant Growth Stage Sprite Manifest
+Generated: 2026-06-26
+Source: data/plants_v3.csv
+==================================================
+
+SPECIES: 33  |  TOTAL FILES: 198
+
+QUICK INDEX
+--------------------------------------------------
+  alder                canopy        15d →  21d   (Common Alder)
+  alpine_strawberry    ground         4d →   7d   (Alpine Strawberry)
+  apple                canopy        12d →  17d   (Apple Tree)
+  blackcurrant         understory     8d →  11d   (Blackcurrant)
+  bracken              understory    10d →  14d   (Bracken)
+  bramble              understory    12d →  17d   (Bramble)
+  broad_bean           understory     4d →   7d   (Broad Bean)
+  carrot               ground         4d →   7d   (Autumn Carrot)
+  climbing_bean        understory    16d →  24d   (Climbing Bean)
+  comfrey_b14          ground         4d →   7d   (Comfrey (Bocking 14))
+  daikon               ground         5d →   8d   (Daikon Radish)
+  damson               canopy        18d →  25d   (Damson Plum)
+  dandelion            ground         5d →  12d   (Dandelion)
+  gooseberry           understory    28d → 999d   (Gooseberry)
+  grass                ground         3d →   6d   (Grass)
+  hawthorn             canopy        10d →  14d   (Hawthorn)
+  hazel                understory    14d →  20d   (Hazel)
+  heather              ground         6d →   9d   (Heather)
+  himalayan_balsam     ground         3d →   6d   (Himalayan Balsam)
+  lettuce              ground         3d →   6d   (Lettuce)
+  nettle               ground         8d →  15d   (Stinging Nettle)
+  potato               understory     6d →   9d   (Maincrop Potato)
+  reed                 ground        14d → 999d   (Reed)
+  rosemary             understory     6d →   9d   (Rosemary)
+  squash               ground        22d →  30d   (Squash)
+  sweetcorn            understory    20d →  28d   (Sweetcorn)
+  tomato               ground         5d →   8d   (Cherry Tomato)
+  water_mint           ground         3d →   6d   (Water Mint)
+  white_clover         ground         3d →   6d   (White Clover)
+  wild_garlic          ground         4d →   7d   (Wild Garlic)
+  willow               canopy        28d → 999d   (Willow)
+  winter_cabbage       understory     6d →   9d   (Winter Cabbage)
+  yorkshire_rhubarb    understory     5d →   8d   (Forced Rhubarb)
+
+FULL FILE LIST
+==================================================
+
+## alder — Common Alder
+  [NEED] flora/alder/stage_0.png                   (Sown)
+  [NEED] flora/alder/stage_1.png                   (Seedling)
+  [NEED] flora/alder/stage_2.png                   (Vegetative)
+  [NEED] flora/alder/stage_3.png                   (Flowering)
+  [NEED] flora/alder/stage_4.png                   (Mature)
+  [NEED] flora/alder/stage_5.png                   (Senescence)
+
+## alpine_strawberry — Alpine Strawberry
+  [NEED] flora/alpine_strawberry/stage_0.png       (Sown)
+  [NEED] flora/alpine_strawberry/stage_1.png       (Seedling)
+  [NEED] flora/alpine_strawberry/stage_2.png       (Vegetative)
+  [NEED] flora/alpine_strawberry/stage_3.png       (Flowering)
+  [NEED] flora/alpine_strawberry/stage_4.png       (Mature)
+  [NEED] flora/alpine_strawberry/stage_5.png       (Senescence)
+
+## apple — Apple Tree
+  [NEED] flora/apple/stage_0.png                   (Sown)
+  [NEED] flora/apple/stage_1.png                   (Seedling)
+  [NEED] flora/apple/stage_2.png                   (Vegetative)
+  [NEED] flora/apple/stage_3.png                   (Flowering)
+  [NEED] flora/apple/stage_4.png                   (Mature)
+  [NEED] flora/apple/stage_5.png                   (Senescence)
+
+## blackcurrant — Blackcurrant
+  [NEED] flora/blackcurrant/stage_0.png            (Sown)
+  [NEED] flora/blackcurrant/stage_1.png            (Seedling)
+  [NEED] flora/blackcurrant/stage_2.png            (Vegetative)
+  [NEED] flora/blackcurrant/stage_3.png            (Flowering)
+  [NEED] flora/blackcurrant/stage_4.png            (Mature)
+  [NEED] flora/blackcurrant/stage_5.png            (Senescence)
+
+## bracken — Bracken
+  [NEED] flora/bracken/stage_0.png                 (Sown)
+  [NEED] flora/bracken/stage_1.png                 (Seedling)
+  [NEED] flora/bracken/stage_2.png                 (Vegetative)
+  [NEED] flora/bracken/stage_3.png                 (Flowering)
+  [NEED] flora/bracken/stage_4.png                 (Mature)
+  [NEED] flora/bracken/stage_5.png                 (Senescence)
+
+## bramble — Bramble
+  [NEED] flora/bramble/stage_0.png                 (Sown)
+  [NEED] flora/bramble/stage_1.png                 (Seedling)
+  [NEED] flora/bramble/stage_2.png                 (Vegetative)
+  [NEED] flora/bramble/stage_3.png                 (Flowering)
+  [NEED] flora/bramble/stage_4.png                 (Mature)
+  [NEED] flora/bramble/stage_5.png                 (Senescence)
+
+## broad_bean — Broad Bean
+  [NEED] flora/broad_bean/stage_0.png              (Sown)
+  [NEED] flora/broad_bean/stage_1.png              (Seedling)
+  [NEED] flora/broad_bean/stage_2.png              (Vegetative)
+  [NEED] flora/broad_bean/stage_3.png              (Flowering)
+  [NEED] flora/broad_bean/stage_4.png              (Mature)
+  [NEED] flora/broad_bean/stage_5.png              (Senescence)
+
+## carrot — Autumn Carrot
+  [NEED] flora/carrot/stage_0.png                  (Sown)
+  [NEED] flora/carrot/stage_1.png                  (Seedling)
+  [NEED] flora/carrot/stage_2.png                  (Vegetative)
+  [NEED] flora/carrot/stage_3.png                  (Flowering)
+  [NEED] flora/carrot/stage_4.png                  (Mature)
+  [NEED] flora/carrot/stage_5.png                  (Senescence)
+
+## climbing_bean — Climbing Bean
+  [NEED] flora/climbing_bean/stage_0.png           (Sown)
+  [NEED] flora/climbing_bean/stage_1.png           (Seedling)
+  [NEED] flora/climbing_bean/stage_2.png           (Vegetative)
+  [NEED] flora/climbing_bean/stage_3.png           (Flowering)
+  [NEED] flora/climbing_bean/stage_4.png           (Mature)
+  [NEED] flora/climbing_bean/stage_5.png           (Senescence)
+
+## comfrey_b14 — Comfrey (Bocking 14)
+  [NEED] flora/comfrey_b14/stage_0.png             (Sown)
+  [NEED] flora/comfrey_b14/stage_1.png             (Seedling)
+  [NEED] flora/comfrey_b14/stage_2.png             (Vegetative)
+  [NEED] flora/comfrey_b14/stage_3.png             (Flowering)
+  [NEED] flora/comfrey_b14/stage_4.png             (Mature)
+  [NEED] flora/comfrey_b14/stage_5.png             (Senescence)
+
+## daikon — Daikon Radish
+  [NEED] flora/daikon/stage_0.png                  (Sown)
+  [NEED] flora/daikon/stage_1.png                  (Seedling)
+  [NEED] flora/daikon/stage_2.png                  (Vegetative)
+  [NEED] flora/daikon/stage_3.png                  (Flowering)
+  [NEED] flora/daikon/stage_4.png                  (Mature)
+  [NEED] flora/daikon/stage_5.png                  (Senescence)
+
+## damson — Damson Plum
+  [NEED] flora/damson/stage_0.png                  (Sown)
+  [NEED] flora/damson/stage_1.png                  (Seedling)
+  [NEED] flora/damson/stage_2.png                  (Vegetative)
+  [NEED] flora/damson/stage_3.png                  (Flowering)
+  [NEED] flora/damson/stage_4.png                  (Mature)
+  [NEED] flora/damson/stage_5.png                  (Senescence)
+
+## dandelion — Dandelion
+  [NEED] flora/dandelion/stage_0.png               (Sown)
+  [NEED] flora/dandelion/stage_1.png               (Seedling)
+  [NEED] flora/dandelion/stage_2.png               (Vegetative)
+  [NEED] flora/dandelion/stage_3.png               (Flowering)
+  [NEED] flora/dandelion/stage_4.png               (Mature)
+  [NEED] flora/dandelion/stage_5.png               (Senescence)
+
+## gooseberry — Gooseberry
+  [NEED] flora/gooseberry/stage_0.png              (Sown)
+  [NEED] flora/gooseberry/stage_1.png              (Seedling)
+  [NEED] flora/gooseberry/stage_2.png              (Vegetative)
+  [NEED] flora/gooseberry/stage_3.png              (Flowering)
+  [NEED] flora/gooseberry/stage_4.png              (Mature)
+  [NEED] flora/gooseberry/stage_5.png              (Senescence)
+
+## grass — Grass
+  [NEED] flora/grass/stage_0.png                   (Sown)
+  [NEED] flora/grass/stage_1.png                   (Seedling)
+  [NEED] flora/grass/stage_2.png                   (Vegetative)
+  [NEED] flora/grass/stage_3.png                   (Flowering)
+  [NEED] flora/grass/stage_4.png                   (Mature)
+  [NEED] flora/grass/stage_5.png                   (Senescence)
+
+## hawthorn — Hawthorn
+  [NEED] flora/hawthorn/stage_0.png                (Sown)
+  [NEED] flora/hawthorn/stage_1.png                (Seedling)
+  [NEED] flora/hawthorn/stage_2.png                (Vegetative)
+  [NEED] flora/hawthorn/stage_3.png                (Flowering)
+  [NEED] flora/hawthorn/stage_4.png                (Mature)
+  [NEED] flora/hawthorn/stage_5.png                (Senescence)
+
+## hazel — Hazel
+  [NEED] flora/hazel/stage_0.png                   (Sown)
+  [NEED] flora/hazel/stage_1.png                   (Seedling)
+  [NEED] flora/hazel/stage_2.png                   (Vegetative)
+  [NEED] flora/hazel/stage_3.png                   (Flowering)
+  [NEED] flora/hazel/stage_4.png                   (Mature)
+  [NEED] flora/hazel/stage_5.png                   (Senescence)
+
+## heather — Heather
+  [NEED] flora/heather/stage_0.png                 (Sown)
+  [NEED] flora/heather/stage_1.png                 (Seedling)
+  [NEED] flora/heather/stage_2.png                 (Vegetative)
+  [NEED] flora/heather/stage_3.png                 (Flowering)
+  [NEED] flora/heather/stage_4.png                 (Mature)
+  [NEED] flora/heather/stage_5.png                 (Senescence)
+
+## himalayan_balsam — Himalayan Balsam
+  [NEED] flora/himalayan_balsam/stage_0.png        (Sown)
+  [NEED] flora/himalayan_balsam/stage_1.png        (Seedling)
+  [NEED] flora/himalayan_balsam/stage_2.png        (Vegetative)
+  [NEED] flora/himalayan_balsam/stage_3.png        (Flowering)
+  [NEED] flora/himalayan_balsam/stage_4.png        (Mature)
+  [NEED] flora/himalayan_balsam/stage_5.png        (Senescence)
+
+## lettuce — Lettuce
+  [NEED] flora/lettuce/stage_0.png                 (Sown)
+  [NEED] flora/lettuce/stage_1.png                 (Seedling)
+  [NEED] flora/lettuce/stage_2.png                 (Vegetative)
+  [NEED] flora/lettuce/stage_3.png                 (Flowering)
+  [NEED] flora/lettuce/stage_4.png                 (Mature)
+  [NEED] flora/lettuce/stage_5.png                 (Senescence)
+
+## nettle — Stinging Nettle
+  [NEED] flora/nettle/stage_0.png                  (Sown)
+  [NEED] flora/nettle/stage_1.png                  (Seedling)
+  [NEED] flora/nettle/stage_2.png                  (Vegetative)
+  [NEED] flora/nettle/stage_3.png                  (Flowering)
+  [HAVE] flora/nettle/stage_4.png                  (Mature)
+  [NEED] flora/nettle/stage_5.png                  (Senescence)
+
+## potato — Maincrop Potato
+  [NEED] flora/potato/stage_0.png                  (Sown)
+  [NEED] flora/potato/stage_1.png                  (Seedling)
+  [NEED] flora/potato/stage_2.png                  (Vegetative)
+  [NEED] flora/potato/stage_3.png                  (Flowering)
+  [NEED] flora/potato/stage_4.png                  (Mature)
+  [NEED] flora/potato/stage_5.png                  (Senescence)
+
+## reed — Reed
+  [NEED] flora/reed/stage_0.png                    (Sown)
+  [NEED] flora/reed/stage_1.png                    (Seedling)
+  [NEED] flora/reed/stage_2.png                    (Vegetative)
+  [NEED] flora/reed/stage_3.png                    (Flowering)
+  [NEED] flora/reed/stage_4.png                    (Mature)
+  [NEED] flora/reed/stage_5.png                    (Senescence)
+
+## rosemary — Rosemary
+  [NEED] flora/rosemary/stage_0.png                (Sown)
+  [NEED] flora/rosemary/stage_1.png                (Seedling)
+  [NEED] flora/rosemary/stage_2.png                (Vegetative)
+  [NEED] flora/rosemary/stage_3.png                (Flowering)
+  [NEED] flora/rosemary/stage_4.png                (Mature)
+  [NEED] flora/rosemary/stage_5.png                (Senescence)
+
+## squash — Squash
+  [NEED] flora/squash/stage_0.png                  (Sown)
+  [NEED] flora/squash/stage_1.png                  (Seedling)
+  [NEED] flora/squash/stage_2.png                  (Vegetative)
+  [NEED] flora/squash/stage_3.png                  (Flowering)
+  [NEED] flora/squash/stage_4.png                  (Mature)
+  [NEED] flora/squash/stage_5.png                  (Senescence)
+
+## sweetcorn — Sweetcorn
+  [NEED] flora/sweetcorn/stage_0.png               (Sown)
+  [NEED] flora/sweetcorn/stage_1.png               (Seedling)
+  [NEED] flora/sweetcorn/stage_2.png               (Vegetative)
+  [NEED] flora/sweetcorn/stage_3.png               (Flowering)
+  [NEED] flora/sweetcorn/stage_4.png               (Mature)
+  [NEED] flora/sweetcorn/stage_5.png               (Senescence)
+
+## tomato — Cherry Tomato
+  [NEED] flora/tomato/stage_0.png                  (Sown)
+  [NEED] flora/tomato/stage_1.png                  (Seedling)
+  [NEED] flora/tomato/stage_2.png                  (Vegetative)
+  [NEED] flora/tomato/stage_3.png                  (Flowering)
+  [NEED] flora/tomato/stage_4.png                  (Mature)
+  [NEED] flora/tomato/stage_5.png                  (Senescence)
+
+## water_mint — Water Mint
+  [NEED] flora/water_mint/stage_0.png              (Sown)
+  [NEED] flora/water_mint/stage_1.png              (Seedling)
+  [NEED] flora/water_mint/stage_2.png              (Vegetative)
+  [NEED] flora/water_mint/stage_3.png              (Flowering)
+  [NEED] flora/water_mint/stage_4.png              (Mature)
+  [NEED] flora/water_mint/stage_5.png              (Senescence)
+
+## white_clover — White Clover
+  [NEED] flora/white_clover/stage_0.png            (Sown)
+  [NEED] flora/white_clover/stage_1.png            (Seedling)
+  [NEED] flora/white_clover/stage_2.png            (Vegetative)
+  [NEED] flora/white_clover/stage_3.png            (Flowering)
+  [NEED] flora/white_clover/stage_4.png            (Mature)
+  [NEED] flora/white_clover/stage_5.png            (Senescence)
+
+## wild_garlic — Wild Garlic
+  [NEED] flora/wild_garlic/stage_0.png             (Sown)
+  [NEED] flora/wild_garlic/stage_1.png             (Seedling)
+  [NEED] flora/wild_garlic/stage_2.png             (Vegetative)
+  [NEED] flora/wild_garlic/stage_3.png             (Flowering)
+  [NEED] flora/wild_garlic/stage_4.png             (Mature)
+  [NEED] flora/wild_garlic/stage_5.png             (Senescence)
+
+## willow — Willow
+  [NEED] flora/willow/stage_0.png                  (Sown)
+  [NEED] flora/willow/stage_1.png                  (Seedling)
+  [NEED] flora/willow/stage_2.png                  (Vegetative)
+  [NEED] flora/willow/stage_3.png                  (Flowering)
+  [NEED] flora/willow/stage_4.png                  (Mature)
+  [NEED] flora/willow/stage_5.png                  (Senescence)
+
+## winter_cabbage — Winter Cabbage
+  [NEED] flora/winter_cabbage/stage_0.png          (Sown)
+  [NEED] flora/winter_cabbage/stage_1.png          (Seedling)
+  [NEED] flora/winter_cabbage/stage_2.png          (Vegetative)
+  [NEED] flora/winter_cabbage/stage_3.png          (Flowering)
+  [NEED] flora/winter_cabbage/stage_4.png          (Mature)
+  [NEED] flora/winter_cabbage/stage_5.png          (Senescence)
+
+## yorkshire_rhubarb — Forced Rhubarb
+  [NEED] flora/yorkshire_rhubarb/stage_0.png       (Sown)
+  [NEED] flora/yorkshire_rhubarb/stage_1.png       (Seedling)
+  [NEED] flora/yorkshire_rhubarb/stage_2.png       (Vegetative)
+  [NEED] flora/yorkshire_rhubarb/stage_3.png       (Flowering)
+  [NEED] flora/yorkshire_rhubarb/stage_4.png       (Mature)
+  [NEED] flora/yorkshire_rhubarb/stage_5.png       (Senescence)

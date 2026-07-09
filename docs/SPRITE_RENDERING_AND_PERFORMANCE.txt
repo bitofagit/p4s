@@ -1,0 +1,291 @@
+================================================================================
+P4S — SPRITE RENDERING & PERFORMANCE (brainstorm doc)
+================================================================================
+Generated: 2026-07-09
+Purpose: Explain how plant/terrain sprites reach the screen, why the new flora
+pipeline is slow, and what design space exists for fixes. Intended for Gemini /
+external design+engineering brainstorming with docs/GEMINI_GAME_DESIGN_BRIEF.txt.
+
+Related:
+  - scripts/plant_growth.gd          — stage math + PNG path resolution
+  - scripts/starting_map.gd        — atlas build, tile painting, preload
+  - assets/base/sprites/flora/       — per-species stage PNG folders
+  - assets/base/sprites/flora/STAGE_SPRITE_MANIFEST.txt
+  - obsidian/26_Six_Stage_Growth_and_Dynamic_Exchange.md
+
+
+================================================================================
+1. PROBLEM STATEMENT
+================================================================================
+
+After wiring flora PNGs from assets/base/sprites/flora/ into the game (2026-07-09),
+load time and/or frame hitches increased noticeably.
+
+The game still uses a **single shared TileMap atlas** for terrain, buildings, legacy
+plant placeholders, AND dynamically stitched flora sprites. New code preloads every
+plant × every growth stage at map boot, growing the atlas and re-uploading the GPU
+texture repeatedly.
+
+We need a faster approach that still supports:
+  - 33 species × 6 growth stages (198 target sprites; ~38 PNGs on disk today)
+  - 3 vertical plant layers: canopy / understory / ground (TileMapLayer each)
+  - Canopy fruit variants (stage{N}nofruit / stage{N}withfruit)
+  - Optional user overrides in user://databases/sprites/
+  - 200×200 px tiles (non-negotiable for art parity)
+
+
+================================================================================
+2. RENDERING STACK (mental model)
+================================================================================
+
+Scene: world.tscn → starting_map (extends TileMapLayer)
+
+Layers (bottom → top, z_index):
+  - Main TileMapLayer (starting_map itself) — terrain: grass, river, cultivated, etc.
+  - GroundLayer      (z=1) — ground-layer plants
+  - UnderstoryLayer  (z=2) — shrubs, beans, etc.
+  - CanopyLayer      (z=3) — trees
+  - StructureLayer   (z=4) — buildings, pens, gates
+  - LensOverlay, CapillaryOverlay, preview overlays (z=5+)
+
+All TileMapLayers share ONE TileSet built at runtime in starting_map._ready().
+
+Plants are NOT Sprite2D nodes. They are **tile indices** into a horizontal atlas:
+  layer_node.set_cell(pos, 0, Vector2i(atlas_x, 0))
+
+Ghost animations (plant spawn/death) temporarily spawn Sprite2D + AtlasTexture
+slicing the same master atlas (_make_plant_ghost_sprite).
+
+
+================================================================================
+3. ATLAS BUILD PIPELINE (starting_map._ready)
+================================================================================
+
+Step A — Procedural base tiles (atlas_x 0–18)
+  Hard-coded Image.fill_rect colours for roads, houses, bridges, etc.
+
+Step B — Dynamic environment tiles (atlas_x 19+)
+  Scans res://assets/base/sprites/environment/{grass,forest,stream,river,...}
+  Loads each PNG via load(), blits into a single Image strip (200 px per slot).
+
+Step C — User plant overrides
+  _stitch_custom_plant_sprites() reads user://databases/sprites/*.png
+  One PNG per plant_id → sets data_plants.gd atlas_x.
+
+Step D — Build TileSet
+  image.generate_mipmaps()
+  ImageTexture.create_from_image(image) → TileSetAtlasSource
+  tile_set assigned to map + child layers.
+
+Step E — Flora preload (NEW, slow)
+  _preload_flora_stage_sprites()
+  For each of 33 plant_ids × 6 stages (0–5):
+    PlantGrowth.stage_sprite_path() → PNG path or ""
+    _register_plant_stage_sprite() → stitch into live atlas
+
+Atlas layout: one row, width = N × 200 px, height = 200 px.
+_next_custom_atlas_x tracks the next free slot (starts after step C).
+
+
+================================================================================
+4. FLORA PNG RESOLUTION (plant_growth.gd)
+================================================================================
+
+Base folder:
+  res://assets/base/sprites/flora/{plant_id}/
+
+Accepted filenames (first match wins):
+  Nested:  stage_4.png, stage4.png
+           stage4withfruit.png, stage4nofruit.png (canopy trees)
+  Flat:    flora/{plant_id}_stage_4.png (alternate)
+
+Canopy layer plants try fruit suffixes first:
+  stage 4 → withfruit before nofruit
+  other stages → nofruit before withfruit
+
+User override folder:
+  user://databases/sprites/stages/{plant_id}/
+
+Stage fallback (if exact stage missing):
+  Scans folder for available stage numbers, picks closest index.
+  Example: lettuce only has stage_4.png → stages 0–3 also resolve to that file.
+
+Growth stage from age (0–5):
+  0 Sown | 1 Seedling | 2 Vegetative | 3 Flowering | 4 Mature | 5 Senescence
+  Thresholds: 0%, 33%, 66%, 100% of days_to_mature, then days_to_senescence.
+
+
+================================================================================
+5. PER-CELL PAINT PATH
+================================================================================
+
+On every full visual refresh (update_visuals → nested loops):
+  for x in map_width (default 128):
+    for y in map_height (128):
+      for layer in [canopy, understory, ground]:
+        growth_stage = PlantGrowth.growth_stage(plant_id, age)
+        atlas_x = _resolve_plant_atlas_x(plant_id, growth_stage)
+        layer.set_cell(pos, atlas_x)
+
+_resolve_plant_atlas_x order:
+  1. Growth-stage flora sprite (cache hit → O(1))
+  2. custom_atlas_x from data
+  3. user:// custom_sprite_path
+  4. Legacy CSV atlas_x (coloured placeholder tile from original atlas)
+
+_refresh_all_visuals() is called often: save load, sleep, tool use, lens change,
+queue updates. Full map repaint = 128×128×4 layers worst case ≈ 65k set_cell ops.
+
+
+================================================================================
+6. WHY _register_plant_stage_sprite IS EXPENSIVE
+================================================================================
+
+Called once per successful (plant_id, stage) pair at preload, and on cache miss
+at runtime. Each call:
+
+  1. _load_png_image(path)
+       res:// → load() as Texture2D → get_image()  (decode + CPU copy)
+       fallback → Image.load_from_file(globalize_path) if not imported yet
+
+  2. Optional resize to 200×200
+
+  3. atlas_tex.get_image()           — pulls FULL atlas from GPU to CPU
+
+  4. If atlas too narrow:
+       Image.create(new_width, 200)   — allocate bigger strip
+       blit_rect entire old atlas     — copy all existing tiles
+
+  5. blit_rect new sprite at ax*200
+
+  6. atlas_tex.set_image(atlas_img)  — uploads ENTIRE atlas back to GPU
+
+  7. source.create_tile(Vector2i(ax, 0))
+
+**Critical bottleneck:** step 6 runs per sprite added. Adding K sprites sequentially
+to an atlas that grows 1 tile at a time ≈ O(K²) GPU texture uploads.
+
+Current scale (July 2026):
+  - 38 PNG files on disk
+  - Preload iterates 33 × 6 = 198 lookups; ~many resolve via fallback to same PNG
+  - _plant_png_path_cache dedupes identical PNG paths (good)
+  - Still dozens of set_image() calls on a widening texture at boot
+
+Additional costs:
+  - generate_mipmaps() on full atlas at initial build (before flora)
+  - Flora additions do NOT regenerate mipmaps (filter mismatch possible)
+  - Image.get_image() / set_image() roundtrip prevents streaming; stalls render thread
+
+
+================================================================================
+7. SCALE & TARGET NUMBERS
+================================================================================
+
+Map:              128×128 default (up to 256×256 in custom grids)
+Tile size:        200×200 px
+Species:          33 (plants_v3.csv)
+Stages/species:   6 → 198 logical sprites
+On disk today:    38 PNGs across 21 folders
+Atlas slot size:  200×200
+Boot atlas base:  ~19 procedural + ~N environment tiles + user customs
+Post-flora:       base + ~30–80 unique atlas slots (depends on fallback caching)
+
+Memory rough order:
+  Atlas width 100 slots → 100×200×4 ≈ 160 KB RGBA (CPU) + GPU copy + mipmaps
+
+
+================================================================================
+8. BRAINSTORM OPTIONS (not implemented — discuss tradeoffs)
+================================================================================
+
+A. BATCH BUILD (minimal change)
+   Collect all flora PNG paths first; expand atlas ONCE to final width; blit all;
+   single set_image(). Keep TileMap architecture.
+   Pros: small code change, big boot win. Cons: still runtime stitch.
+
+B. LAZY / ON-DEMAND LOAD
+   Remove _preload_flora_stage_sprites(). Only register sprites for plant_ids
+   actually present on the map (scan grid once after load).
+   Pros: faster empty maps. Cons: hitch on first sighting; still per-sprite set_image
+   unless batched.
+
+C. EDITOR-TIME BAKED ATLAS
+   Tool script merges flora/ into res://assets/base/sprites/atlas/flora_atlas.png
+   + JSON manifest {plant_id, stage, atlas_x}. Boot only load() one texture.
+   Pros: zero runtime stitch. Cons: rebuild step when art changes.
+
+D. SECOND TileSetAtlasSource (or second TileSet)
+   Terrain atlas unchanged; flora uses separate source #1 in same TileSet.
+   Pros: flora updates don't touch terrain texture. Cons: two textures per layer;
+   still need batching for many sprites.
+
+E. PER-PLANT Texture2D (no mega-atlas for flora)
+   TileMapLayer alternative: custom CanvasItem drawer or MultiMesh that draws
+   Texture2D per cell from a dictionary cache.
+   Pros: no atlas growth. Cons: major refactor; lose TileMap batching benefits.
+
+F. Texture2DArray + shader
+   Array of 198 layers; tile stores array index. Single bind, good for GPU.
+   Pros: scalable. Cons: custom tile renderer; Godot TileMap doesn't natively support.
+
+G. REDUCE LOOKUP WORK
+   Preload: scan flora folders once → build {plant_id: {stage: path}} dict;
+   don't iterate 33×6 with fallback chains.
+   Pros: cheaper boot CPU. Cons: doesn't fix GPU upload issue alone.
+
+H. IMPORT PIPELINE
+   Ensure every PNG has .import; use load() only (no get_image roundtrip at boot).
+   Pre-imported CompressedTexture2D → copy via copy_from / atlas packer.
+   Pros: faster decode. Cons: still need atlas packing strategy.
+
+I. VISUAL REFRESH THROTTLE
+   update_visuals full scan on sleep/save only; incremental _refresh_cell for edits.
+   Pros: better runtime FPS. Cons: separate from boot cost; more stale-state bugs.
+
+J. STAGE FALLBACK POLICY
+   Only register sprites that exist; at paint time pick nearest stage without
+   creating 6 cache entries per sparse species.
+   Pros: fewer atlas slots. Cons: needs fast nearest-stage lookup.
+
+
+================================================================================
+9. CACHES (current)
+================================================================================
+
+_plant_stage_atlas_cache   key: "plant_id:stage"  → atlas_x
+_plant_png_path_cache      key: res:// path       → atlas_x (dedupe)
+
+Miss → _register_plant_stage_sprite (expensive).
+Hit  → _resolve_plant_atlas_x returns immediately.
+
+
+================================================================================
+10. LEGACY vs NEW ART
+================================================================================
+
+Legacy: plants_v3.csv atlas_x points to coloured placeholder rectangles in the
+        original procedural atlas (slots 0–18 area).
+
+New:    flora/{plant_id}/stage_*.png overrides when file exists.
+
+If no PNG: game falls back to legacy atlas_x (player sees coloured block).
+
+
+================================================================================
+11. OPEN QUESTIONS FOR GEMINI
+================================================================================
+
+1. Is one horizontal atlas still the right abstraction for 198 plant sprites + terrain?
+2. Should flora share the terrain TileSet or get its own texture permanently?
+3. Boot-time vs lazy loading: which fits a farming sim where players revisit saves?
+4. Can we batch GPU uploads without rewriting the whole map renderer?
+5. Stage fallback: show nearest stage, blank tile, or legacy placeholder for missing art?
+6. Mipmaps: regenerate after flora stitch, or use nearest filtering for plants only?
+7. As art completes (198 PNGs), what's the upper bound atlas width before mobile GPUs struggle?
+
+
+================================================================================
+12. REVISION LOG
+================================================================================
+
+2026-07-09 — RESOLVED: pre-baked 14×15 flora_atlas.png + flora_atlas_map.json; flora TileMapLayers on World; runtime stitch removed.

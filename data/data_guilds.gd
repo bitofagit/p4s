@@ -31,14 +31,14 @@ const ENTRIES: Dictionary = {
 	"berry_thicket": {
 		"name": "Berry Thicket",
 		"core": "gooseberry",
-		"companions": ["currant", "comfrey"],
+		"companions": ["blackcurrant", "comfrey_b14"],
 		"growth_mult": 1.8,
 		"yield_bonus": 2,
 		"desc": "Comfrey dynamically accumulates deep minerals to feed the heavy-fruiting understory bushes."
 	},
 	"pioneer_blast": {
 		"name": "Pioneer Blast",
-		"core": "clover",
+		"core": "white_clover",
 		"companions": ["daikon", "dandelion"],
 		"growth_mult": 1.5,
 		"yield_bonus": 0, # Used purely for soil healing

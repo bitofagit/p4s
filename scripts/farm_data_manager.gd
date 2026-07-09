@@ -20,6 +20,32 @@ var redo_queue: Array[Array] = []
 var blueprints: Array[Dictionary] = []
 var current_money: int = 500
 var current_season: String = "Spring"
+const DAYS_PER_MONTH := 28
+const DAYS_PER_YEAR := 336
+## Turn 1 = Dawnseed 1, Year 1. Each gameplay season spans three months (see MONTH_SEASONS).
+## Month display names from obsidian/24_Months.md
+const MONTHS: Array[String] = [
+	"Dawnseed", "Glimmernow", "Bloomtide",
+	"Sungrain", "Solstace", "Meadowlark",
+	"Leafturn", "Grainrest", "Windfall",
+	"Frostmoon", "Yulebrink", "Landsleep",
+]
+## Hover / lore label for each month (Early Spring, Mid Spring, …).
+const MONTH_SEASONS: Array[String] = [
+	"Early Spring", "Mid Spring", "Late Spring",
+	"Early Summer", "Mid Summer", "Late Summer",
+	"Early Autumn", "Mid Autumn", "Late Autumn",
+	"Early Winter", "Mid Winter", "Late Winter",
+]
+const WEEKDAYS: Array[String] = ["M", "Tu", "W", "Th", "F", "Sa", "Su"]
+const COARSE_SEASONS: Array[String] = ["Spring", "Summer", "Autumn", "Winter"]
+const COMMUNITY_EVENTS_DEFAULT: Dictionary = {
+	14: "Seed Swap",
+	28: "Spring Festival",
+	56: "Midsummer Fair",
+	84: "Harvest Moon Feast",
+}
+var community_events: Dictionary = COMMUNITY_EVENTS_DEFAULT.duplicate()
 var inventory: Dictionary = {}
 var workers: Array[Dictionary] = []
 
@@ -142,6 +168,8 @@ func reset_data(overrides: Dictionary = {}) -> void:
 	current_money = int(overrides.get("money", 500))
 	inventory.clear()
 	current_season = "Spring"
+	community_events = COMMUNITY_EVENTS_DEFAULT.duplicate()
+	sync_calendar_state()
 	difficulty = "Normal"
 	is_creative_mode = false
 	creative_zen_mode = false
@@ -159,7 +187,8 @@ func reset_data(overrides: Dictionary = {}) -> void:
 		"id": "player", "name": "Farmer", "color": "fbc02d",
 		"role": "active", "skills": {"dig": 1.0, "maintain": 1.0}, "action_queue": [],
 		"energy": base_max_energy, "max_energy": base_max_energy,
-		"sprite": "res://assets/base/sprites/characters/farmers/farmer.png"
+		"sprite": "res://assets/base/sprites/characters/farmers/farmer.png",
+		"character_anim": "inbox_farmer",
 	}]
 	cell_notes.clear()
 	scribbles.clear()
@@ -234,12 +263,12 @@ func reset_data(overrides: Dictionary = {}) -> void:
 
 
 func _resolve_custom_starting_grid_path() -> String:
+	# Only a grid saved for THIS campaign id boots here. The Map Editor's scratch grid
+	# (user://campaigns/custom/) must never hijack tutorial / standard campaigns —
+	# those fall through to procedural biome generation in starting_map.
 	var campaign_path := "user://campaigns/%s/starting_grid.json" % active_campaign_id
 	if FileAccess.file_exists(campaign_path):
 		return campaign_path
-	var custom_path := "user://campaigns/custom/starting_grid.json"
-	if FileAccess.file_exists(custom_path):
-		return custom_path
 	return ""
 
 
@@ -269,7 +298,7 @@ func try_load_custom_starting_grid() -> bool:
 		push_warning("FarmDataManager: starting grid missing grid_data array")
 		return false
 
-	var new_grid: Array = []
+	var new_grid: Array[Array] = []
 	for x in range(w):
 		var src_col: Variant = raw_grid[x] if x < raw_grid.size() else []
 		var column: Array = []
@@ -310,6 +339,101 @@ func is_time_machine_enabled() -> bool:
 	var meta := get_node_or_null("/root/MetaManager")
 	var dev_mode := meta != null and bool(meta.get("dev_mode"))
 	return is_creative_mode or dev_mode
+
+
+func get_current_date_info(turn: int = -1) -> Dictionary:
+	var t := turn if turn >= 0 else current_turn
+	var zero := t - 1
+	var year := int(zero / DAYS_PER_YEAR) + 1
+	var month_index := int((zero % DAYS_PER_YEAR) / DAYS_PER_MONTH)
+	var day_of_month := (zero % DAYS_PER_MONTH) + 1
+	var weekday: String = WEEKDAYS[zero % WEEKDAYS.size()]
+	return {
+		"year": year,
+		"month_index": month_index,
+		"month_name": MONTHS[month_index],
+		"season_name": MONTH_SEASONS[month_index],
+		"day_of_month": day_of_month,
+		"weekday": weekday,
+	}
+
+
+func get_month_season_name(month_index: int) -> String:
+	var idx := posmod(month_index, MONTH_SEASONS.size())
+	return MONTH_SEASONS[idx]
+
+
+func get_coarse_season(turn: int = -1) -> String:
+	var month_index: int = int(get_current_date_info(turn)["month_index"])
+	return COARSE_SEASONS[month_index / 3]
+
+
+func format_year(year: int) -> String:
+	return "Year %d" % year
+
+
+func _ordinal_day(day: int) -> String:
+	var mod100 := day % 100
+	if mod100 >= 11 and mod100 <= 13:
+		return "%dth" % day
+	match day % 10:
+		1:
+			return "%dst" % day
+		2:
+			return "%dnd" % day
+		3:
+			return "%drd" % day
+		_:
+			return "%dth" % day
+
+
+func format_calendar_date(turn: int = -1, use_ordinal: bool = true) -> String:
+	var info := get_current_date_info(turn)
+	var day_part: String = _ordinal_day(int(info["day_of_month"])) if use_ordinal else str(info["day_of_month"])
+	return "%s %s, %s" % [info["month_name"], day_part, format_year(int(info["year"]))]
+
+
+func format_month_year(year: int, month_index: int) -> String:
+	var idx := posmod(month_index, MONTHS.size())
+	return "%s, %s" % [MONTHS[idx], format_year(year)]
+
+
+func flowering_season_matches(flowering_seasons: Variant, turn: int = -1) -> bool:
+	var info := get_current_date_info(turn)
+	var tags: Array[String] = [
+		get_coarse_season(turn).to_lower(),
+		str(info["season_name"]).to_lower(),
+		str(info["month_name"]).to_lower(),
+	]
+	if flowering_seasons is Array:
+		for fs in flowering_seasons:
+			var key := str(fs).strip_edges().to_lower()
+			if key.is_empty():
+				continue
+			for tag in tags:
+				if tag == key or key in tag or tag in key:
+					return true
+	return false
+
+
+func sync_calendar_state() -> void:
+	current_season = get_coarse_season()
+
+
+func get_current_season(turn: int = -1) -> String:
+	return get_coarse_season(turn)
+
+
+func get_season_day(turn: int = -1) -> int:
+	return int(get_current_date_info(turn)["day_of_month"])
+
+
+func turn_for_month_day(year: int, month_index: int, day_of_month: int) -> int:
+	return (year - 1) * DAYS_PER_YEAR + month_index * DAYS_PER_MONTH + day_of_month
+
+
+func get_community_event(turn: int) -> String:
+	return str(community_events.get(turn, ""))
 
 
 func get_history_playhead() -> int:
@@ -504,8 +628,8 @@ func apply_history_snapshot(index: int) -> bool:
 		rebuilt.append(new_col)
 	grid_data = rebuilt
 	current_turn = int(snap.get("turn", current_turn))
-	current_season = str(snap.get("season", current_season))
 	current_money = int(snap.get("money", current_money))
+	sync_calendar_state()
 
 	action_queue.clear()
 	var raw_queue: Variant = snap.get("action_queue", [])
@@ -664,3 +788,109 @@ func clamp_stored_power() -> void:
 
 func get_max_water_capacity() -> int:
 	return count_fixture("water_butt") * GVCS_STORAGE_PER_STRUCTURE
+
+
+const PLANT_DEATH_LOG_MAX := 5
+
+const PLANT_DEATH_REASON_LABELS: Dictionary = {
+	"Thirsty!": "Low moisture",
+	"Root Rot!": "Waterlogged roots",
+	"Starved!": "Low nitrogen",
+	"Nutrient Burn!": "Excess nitrogen",
+	"Mineral Starved!": "Low minerals",
+	"Lockout!": "Mineral lockout",
+	"Toxic Soil!": "Soil toxicity",
+	"Frost (weather)": "Frost",
+	"Frostbite": "Winter frostbite",
+	"Desiccation": "Dried out",
+	"Swaled": "swaled",
+}
+
+
+func record_plant_death(cell: Dictionary, layer: String, plant_id: String, reason: String) -> void:
+	if plant_id.is_empty():
+		return
+	var age_key := layer + "_age"
+	var peak_key := layer + "_peak_age"
+	var planted_key := layer + "_planted_turn"
+	var peak_age := float(cell.get(peak_key, maxf(0.0, float(cell.get(age_key, 0.0)))))
+	var planted_turn := int(cell.get(planted_key, -1))
+	var lifespan_turns := current_turn - planted_turn if planted_turn >= 0 else int(round(peak_age))
+	lifespan_turns = maxi(0, lifespan_turns)
+	var stage_idx := PlantGrowth.growth_stage(plant_id, peak_age)
+	var log: Array = []
+	if cell.has("plant_death_log") and typeof(cell["plant_death_log"]) == TYPE_ARRAY:
+		log = cell["plant_death_log"]
+	log.insert(0, {
+		"plant_id": plant_id,
+		"layer": layer,
+		"turn": current_turn,
+		"reason": reason,
+		"lifespan_turns": lifespan_turns,
+		"growth_stage": stage_idx,
+		"peak_age": peak_age,
+	})
+	while log.size() > PLANT_DEATH_LOG_MAX:
+		log.pop_back()
+	cell["plant_death_log"] = log
+
+
+func mark_plant_planted(cell: Dictionary, layer: String) -> void:
+	cell[layer + "_age"] = 0.0
+	cell[layer + "_peak_age"] = 0.0
+	cell[layer + "_planted_turn"] = current_turn
+
+
+func erase_plant_tracking_keys(cell: Dictionary, layer: String) -> void:
+	for suffix in ["_age", "_peak_age", "_planted_turn", "_yield"]:
+		cell.erase(layer + suffix)
+
+
+func format_plant_lifespan_text(lifespan_turns: int) -> String:
+	if lifespan_turns <= 0:
+		return "less than 1 turn"
+	if lifespan_turns == 1:
+		return "1 turn"
+	return "%d turns" % lifespan_turns
+
+
+func format_plant_death_reason(reason: String) -> String:
+	return str(PLANT_DEATH_REASON_LABELS.get(reason, reason))
+
+
+func format_plant_death_log(cell: Dictionary, max_entries: int = 3) -> String:
+	var log: Array = cell.get("plant_death_log", [])
+	if log.is_empty():
+		return ""
+	var plant_db = preload("res://data/data_plants.gd")
+	var lines: PackedStringArray = []
+	var show_count := mini(max_entries, log.size())
+	for i in range(show_count):
+		var entry: Dictionary = log[i]
+		var pid := str(entry.get("plant_id", ""))
+		var pname := str(plant_db.get_plant_data(pid).get("name", pid))
+		var death_turn := int(entry.get("turn", current_turn))
+		var turns_ago := maxi(0, current_turn - death_turn)
+		var reason := format_plant_death_reason(str(entry.get("reason", "Unknown")))
+		var layer := str(entry.get("layer", ""))
+		var layer_part := (" (%s)" % layer.capitalize()) if layer != "" else ""
+		var ago_txt := "this turn" if turns_ago == 0 else (
+			"%d turn%s ago" % [turns_ago, "s" if turns_ago != 1 else ""]
+		)
+		var lifespan_txt := format_plant_lifespan_text(int(entry.get("lifespan_turns", 0)))
+		var stage_idx := int(entry.get("growth_stage", -1))
+		if stage_idx < 0:
+			stage_idx = PlantGrowth.growth_stage(pid, float(entry.get("peak_age", 0.0)))
+		var stage_num := clampi(stage_idx, 0, 5) + 1
+		lines.append(
+			"  • [color=#ef9a9a]%s[/color]%s — %s\n"
+			+ "    [color=#b0bec5]Lived %s · reached stage %d · cause of death: %s[/color]"
+			% [pname, layer_part, ago_txt, lifespan_txt, stage_num, reason]
+		)
+	var header := "[b][color=#e57373]☠ Plant history[/color][/b]\n"
+	if log.size() > show_count:
+		header = (
+			"[b][color=#e57373]☠ Plant history[/color][/b] "
+			+ "[color=#888](%d of %d)[/color]\n" % [show_count, log.size()]
+		)
+	return header + "\n".join(lines)

@@ -1,0 +1,523 @@
+================================================================================
+PERMACULTURE 4 SQUARES (P4S) — GAME DESIGN ASSISTANT BRIEF
+================================================================================
+Generated: 2026-07-07
+Purpose: Onboard external AI assistants (e.g. Gemini) as game design collaborators.
+This repo is the OPENCORE fork — campaigns/ghost-story premium content is stripped or
+gitignored; the permaculture simulation engine and Yorkshire design lore remain.
+
+HOW TO USE THIS FILE
+--------------------
+Paste this entire document (or relevant sections) at the start of a Gemini chat when
+you want design help. For implementation detail, also point Gemini at:
+  - docs/CODEBASE_GUIDE.md      (where code lives)
+  - docs/ARCHITECTURE.txt         (structural stack)
+  - docs/SPRITE_RENDERING_AND_PERFORMANCE.txt  (atlas / flora / slowdown brainstorm)
+  - docs/GEMINI_NANOALPHA_SPRITE_PIPELINE.txt  (batch background removal for flora PNGs)
+  - obsidian/                   (design vault — markdown, not loaded by Godot)
+  - docs/cursor-action-log.txt  (recent engineering changes, append-only)
+
+When proposing mechanics, prefer aligning with existing V3 ecology, guild systems,
+and the Obsidian vault rather than inventing parallel systems.
+
+
+================================================================================
+1. WHAT THIS GAME IS
+================================================================================
+
+**Permaculture 4 Squares** is a tile-based permaculture farming simulation built in
+Godot 4.x. The player manages a grid farm over a **turn-based weekly cycle**:
+plan tools and planting by day, spend **Energy**, queue actions, then **Sleep** to
+advance the calendar and run overnight ecology (plant growth, soil exchange, weather,
+spreading, harvest).
+
+Core fantasy:
+  - Soil is a living 9-stat ecosystem (moisture, nitrogen, minerals, structure,
+    fungi, bacteria, macro-life, pH, toxicity) — not a single "fertility" number.
+  - Plants are **active participants**: they consume gatekeeper resources, alter
+    soil deltas each night, and stack vertically in **canopy / understory / ground**.
+  - **Guilds** (1-tile vertical stacks) and **Superguilds** (3×3 role neighbourhoods)
+    reward polyculture design.
+  - Yorkshire-inspired hydrology (swales, mounds), calendar (24 fantasy months), and
+    regional superguild lore inform content — even in opencore sandbox mode.
+
+Tone: educational permaculture sim with cozy pixel presentation; commercial fork adds
+ghost-story narrative (NOT in this public/opencore tree).
+
+
+================================================================================
+2. OPEN CORE vs PREMIUM (LEGAL / SCOPE BOUNDARY)
+================================================================================
+
+**Open core (this repo):**
+  - Engine: grid, soil V3 sim, tools, HUD, save system, generic/base art.
+  - Campaign: `tutorial` ("Permaculture 101") via data_scenario.gd.
+  - Assets: res://assets/base/  (committed)
+  - Data: res://data/plants_v3.csv, opencore_dialogue.csv, opencore_weather.csv
+
+**Premium / commercial (gitignored or stripped):**
+  - res://assets/premium/  — copyrighted pixel art, audio, branding
+  - Ghost story, Karma meta-roguelike, Oakhaven Defence political campaign, etc.
+  - obsidian/11_Premium_Ghost_Story_Archive.md is shielded from git
+
+**Design rule for assistants:** Never hardcode premium asset paths. Narrative must
+stay data-driven (CSV + signals), not baked into core cellular automata loops.
+See obsidian/10_Open_Core_Architecture.md.
+
+
+================================================================================
+3. TECH STACK & REPO LAYOUT
+================================================================================
+
+Engine:     Godot 4.x (GDScript)
+Main scene: res://scenes/main_menu.tscn → res://scenes/world.tscn
+Map script: scripts/starting_map.gd on TileMapLayer in world.tscn (~8000 lines)
+HUD:        scenes/hud.tscn + scripts/hud.gd (runtime-built StatusStrip, sidebars)
+Camera:     scripts/world.gd on Camera2D (pan, zoom, screen shake, event queues)
+
+Key folders:
+  scripts/          Gameplay + UI logic
+  scenes/           Godot scenes
+  data/             CSV + data_*.gd content loaders
+  assets/base/      Opencore pixel art (see ASSET_MANIFEST.txt)
+  obsidian/         Design vault (Markdown). Has .gdignore so Godot ignores it.
+  docs/             Architecture, guides, agent logs, this brief
+  inbox/            Raw PixelLab exports (reference art pipeline, not runtime)
+
+Tile size: 200×200 px for map cells and plant sprites.
+
+
+================================================================================
+4. RUNTIME ARCHITECTURE (WHO OWNS WHAT)
+================================================================================
+
+AUTOLOADS (project.godot):
+  FarmDataManager   — Authoritative per-save sim state: grid, turn, money, season,
+                      workers, energy, inventory, action_queue, blueprints, notes.
+  SaveManager       — JSON saves under user://, hotkeys in user://settings.json
+  MetaManager       — Cross-save karma, unlocks, dev flag (user://shadow_logic_meta.json)
+  RadioManager      — Music/SFX, beat hooks
+  GodotDocsLog      — Session error logs → docs/godot_error_log_*.txt
+
+SIMULATION AUTHORITY:
+  FarmDataManager.grid_data[x][y] = Dictionary per cell (see §6).
+  starting_map.gd reads/writes grid, runs tools, overnight loop, rendering, narrative.
+
+UI PHILOSOPHY:
+  HUD emits signals (action_selected, save_requested, …); starting_map connects and
+  mutates FarmDataManager. UI stays mostly stateless.
+
+PERSISTENCE:
+  user://<save_name>.json     — full farm snapshot
+  user://databases/sprites/   — user custom plant PNGs
+  user://campaigns/<id>/      — optional campaign CSV overrides
+
+
+================================================================================
+5. GAMEPLAY LOOP
+================================================================================
+
+**Turn** = one calendar day. Turn 1 = Dawnseed 1st, Year 1.
+
+**Player resources (see obsidian/11_The_Weekly_Cycle.md):**
+  - Energy — stamina for map tools; resets on sleep/week advance
+  - Money (£) — seeds, structures (current_money in FarmDataManager)
+  - Action queue — planned tile work executed during sleep animation
+
+**Typical day:**
+  1. Inspect soil (tile inspector, lenses, Hold Shift for deep tooltip)
+  2. Rotovate / hoe / water / plant / build / queue earthworks
+  3. Sleep → night queue runs → advance_turn() → plant biology, weather, spread
+
+**Sleep / advance_turn (starting_map.gd):**
+  - Runs queued player actions
+  - Weather applies global moisture deltas (forecast-driven)
+  - Per-plant biology: Phase A gatekeepers (stress/death), Phase B exchange (deltas)
+  - Growth ages plants; spread; auto-harvest if enabled
+  - Calendar increments; season derived from month index
+
+**Creative mode flags** (FarmDataManager): infinite water, weatherproof, time-lapse
+multiplier, zen mode — for sandbox/testing.
+
+
+================================================================================
+6. GRID CELL MODEL
+================================================================================
+
+Each cell is a Dictionary. Important keys:
+
+LAND / TERRAIN:
+  land          — "wild", "cultivated", "forest", "swale", "mound", "stream",
+                  "river", "road", "bridge", "overgrown", "sand", etc.
+  zone          — e.g. "polytunnel" (weather-shielded microclimate)
+
+VERTICAL PLANT STACK (three independent layers):
+  canopy        — plant id string (e.g. "apple") or empty
+  understory    — plant id
+  ground        — plant id
+  canopy_age, understory_age, ground_age — float days since planting
+
+V3 SOIL STATS (most clamped 0–10; pH 0–14):
+  moisture, nitrogen, minerals, structure, toxicity, ph
+  fungi, bacteria, macro_life, biodiversity, aeration
+  depth (topsoil cm) — physical gatekeeper for taproots
+
+STRUCTURES / FIXTURES:
+  structure     — building id string (honesty_box, pig_house, …) OR legacy numeric
+                  soil structure stat — code uses _cell_has_building_structure() to disambiguate
+
+INFRA:
+  seed_id       — queued seed for planting preview
+  planned actions tie into action_queue / blueprints
+
+Legacy saves with only m/n are upgraded on load to V3 via save_manager.gd.
+
+
+================================================================================
+7. SOIL ECOSYSTEM (DESIGN MODEL)
+================================================================================
+
+Documented in obsidian/00_Soil_Ecosystem.md and layer files 01–04.
+
+Three conceptual layers for players:
+  Physical  — depth, moisture, structure, temperature, sun/shade
+  Chemical  — nitrogen, minerals, pH, toxicity
+  Biological — fungi, bacteria, macro-life (worms/beetles)
+
+**Gatekeepers:** Each plant has min/max moisture, nitrogen, minerals, max_toxicity,
+ideal pH, min_depth, frost_hardiness, min_germination_temp, max_temp. Outside bounds
+→ stress chip, zero growth, eventual death with floating text ("Thirsty!", "Root Rot!",
+"Nutrient Burn!", "Toxic Soil!", etc.).
+
+**Exchange:** Surviving plants apply per-turn deltas from CSV (see §8). Swales push
+moisture to neighbours (capillary action). Mounds reduce evaporation. Weather applies
+global moisture swings (+3 heavy rain, -2 dry, etc.). Polytunnel cells immune to frost.
+
+Player-facing UI: Soil Profile inspector (soil_profile_ui.gd) with safe-range overlays
+from overlapping plant requirements; ghost bars show next-turn forecast.
+
+
+================================================================================
+8. PLANTS — V3 DATABASE (33 SPECIES)
+================================================================================
+
+Source of truth: data/plants_v3.csv loaded by data/data_plants.gd
+Legacy plants.csv exists but V3.3 schema is authoritative.
+
+Each row includes:
+  Identity: id, name, latin_name, layer, lifecycle (annual/perennial), cost
+  Gatekeepers: min/max moisture, nitrogen, minerals, ideal_ph_*, max_toxicity,
+               min_depth, min_germination_temp, max_temp, frost_hardiness, shade_tolerance
+  Exchange: moisture_delta, nitrogen_delta, mineral_delta, structure_delta, toxicity_delta
+  Soil web: fungal_affinity, bacterial_affinity, macro_life_affinity (×0.1 per turn)
+  Timing: mature_turn, days_to_mature, days_to_senescence
+  Gameplay: spread_rate, yield_val, energy_yield, pollination_bonus, flowering_seasons
+  Flags: nitrogen_fixer, dynamic_accumulator, repels_pests, edible_parts, toxicity
+
+**All 33 plant ids (layer · days_to_mature):**
+  CANOPY:     apple(12), damson(18), hawthorn(10), alder(15), willow(28)
+  UNDERSTORY: hazel(14), yorkshire_rhubarb(5), blackcurrant(8), broad_bean(4),
+              rosemary(6), bramble(12), bracken(10), potato(6), winter_cabbage(6),
+              sweetcorn(20), climbing_bean(16), gooseberry(28)
+  GROUND:     comfrey_b14(4), white_clover(3), wild_garlic(4), daikon(5),
+              alpine_strawberry(4), grass(3), heather(6), water_mint(3), carrot(4),
+              lettuce(3), himalayan_balsam(3), tomato(5), nettle(8), dandelion(5),
+              squash(22), reed(14)
+
+**Eight design-doc additions** (guild/wetland coverage):
+  nettle, dandelion, sweetcorn, climbing_bean, squash, gooseberry, willow, reed
+  — full ecological tuning in CSV; see obsidian/26_Six_Stage_Growth_and_Dynamic_Exchange.md
+
+
+--------------------------------------------------------------------------------
+8a. SIX-STAGE GROWTH (VISUAL + BIOLOGY)
+--------------------------------------------------------------------------------
+
+Universal life cycle (scripts/plant_growth.gd, class_name PlantGrowth):
+
+  Stage 0 Sown        — age == 0
+  Stage 1 Seedling    — age > 0, < 33% of days_to_mature
+  Stage 2 Vegetative  — 33%–66% of mature
+  Stage 3 Flowering   — 66%–100% of mature
+  Stage 4 Mature      — >= days_to_mature, < days_to_senescence (harvest-ready)
+  Stage 5 Senescence  — >= days_to_senescence (999 = effectively perennial)
+
+**Stage-scaled soil exchange** (IMPORTANT — as of 2026-06):
+CSV deltas are BASELINE values. At runtime, nitrogen/mineral/moisture deltas multiply
+by stage curve before applying to soil:
+
+  Stage | N mult | Min mult | Moisture mult
+  ------|--------|----------|---------------
+  0     | 0.0    | 0.0      | 0.1
+  1     | 0.25   | 0.1      | 0.5
+  2     | 1.0    | 0.5      | 1.0   ← peak N hunger (leafy growth)
+  3     | 0.5    | 1.0      | 1.0   ← shift to minerals
+  4     | 0.2    | 1.0      | 1.0   ← fruiting mineral draw
+  5     | 0.0    | 0.0      | 0.0   ← dead/dying
+
+Positive deltas (N-fixers) scale the same way. structure_delta, toxicity_delta, and
+fungal/bacterial/macro affinities are NOT stage-scaled.
+
+UI: Hold Shift on tile → stage label + scaled next-turn exchange (plant_nutrient_forecast.gd).
+
+**Sprites:** assets/base/sprites/flora/{plant_id}/stage_0.png … stage_5.png (200×200).
+Manifest: assets/base/sprites/flora/STAGE_SPRITE_MANIFEST.txt (198 files, mostly NEED).
+Fallback: legacy atlas_x until stage art exists.
+
+
+================================================================================
+9. GUILDS & POLYCULTURE
+================================================================================
+
+STANDARD GUILDS (data/data_guilds.gd) — 1-TILE VERTICAL STACK:
+All three layers on ONE tile must include core + listed companions.
+  orchard_trinity    — core apple + broad_bean, daikon (growth ×2)
+  shade_garden       — core lettuce + apple canopy above (×1.5)
+  the_three_sisters  — core sweetcorn + climbing_bean, squash (×2.5)
+  berry_thicket      — core gooseberry + blackcurrant, comfrey_b14 (×1.8)
+  pioneer_blast      — core white_clover + daikon, dandelion (soil healing)
+
+Checked by _get_guild_synergy_mult() in starting_map.gd. Guild Vision lens = gold aura.
+
+SUPERGUILDS (data/data_superguilds.gd) — 3×3 NEIGHBOURHOOD:
+Role-based, not specific plant names. Examples:
+  sg002 Orchard Core — fruit_tree + nitrogen_fixer + dynamic_accumulator
+  sg_york_01 Riparian Windbreak — nitrogen_fixer + wetland + windbreak
+  sg_york_08 Comfrey Engine — dynamic_accumulator adjacent to heavy_feeder
+  sg_york_11 Clay Breakers — 2 root_crop + 2 structural in neighbourhood
+
+See obsidian/12_Understanding_Guilds.md, 13_Superguild_Networks.md, and numbered
+Yorkshire superguild pages (16–23, 103–111).
+
+POLLINATION: flowering_seasons + pollination_bonus in plants_v3.csv; season match
+during bloom improves yield (flowering_season_matches in farm_data_manager.gd).
+
+
+================================================================================
+10. CALENDAR & SEASONS
+================================================================================
+
+336 days/year = 12 months × 28 days (obsidian/24_Months.md)
+
+Month names (FarmDataManager.MONTHS):
+  Dawnseed, Glimmernow, Bloomtide, Sungrain, Solstace, Meadowlark,
+  Leafturn, Grainrest, Windfall, Frostmoon, Yulebrink, Landsleep
+
+Hover labels (MONTH_SEASONS): Early/Mid/Late Spring/Summer/Autumn/Winter
+
+Gameplay season (current_season): Spring/Summer/Autumn/Winter from month_index/3.
+Synced after turn advance (was historically one day behind — fixed 2026-06).
+
+CalendarDock + WeatherDock in HUD right sidebar (edge-tab UI).
+
+
+================================================================================
+11. WEATHER & FORECAST
+================================================================================
+
+5-day **verified** forecast window (ACCURATE_FORECAST_DAYS = 5 in hud.gd).
+Days 5–24 show seeded confidence % (30–85), dimmed UI — "looking ahead".
+
+Weather sources:
+  - data/opencore_weather.csv for tutorial campaign
+  - Procedural roll when no CSV row (sandbox)
+  - data/story_weather.csv for legacy story beats
+
+Global moisture effects (obsidian/07_V3_Ecology_and_Weather_Mechanics.md):
+  Heavy Rain +3, Clear -0.5, Dry -2, Early Frost -0.5 + kills low frost_hardiness
+
+WeatherDock: plain-English farmer-friendly copy; accessible detail panel.
+
+
+================================================================================
+12. TOOLS, LENSES & INSPECT MODES
+================================================================================
+
+TOOLS (via HUD Actions menu / hotkeys → starting_map set_current_tool):
+  rotovate, e_tiller, hoe — prepare soil
+  scythe, uproot, chop_and_drop — clear biomass
+  harvest — collect mature produce
+  plant:<seed_id> — planting via seed picker (3 tabs: Canopy / Understory / Ground)
+  water_tile, hosepipe — irrigation
+  dig_swale, build_mound — earthworks
+  build, build_path, demolish — structures
+  apply_tea, additives — compost/mulch
+  design lens tools — cell notes, triage pins
+
+LENSES (active_lens in starting_map.gd):
+  normal, moisture, nitrogen, growth — heatmap overlays
+  soil_data, plant_data — micro bar charts per cell (data_view_overlay.gd)
+  guild — gold/purple synergy visualization
+  energy — zone metaballs, path cost to tile
+  design — blueprint/notes mode
+
+Hold **Shift** on tile: rich tooltip with soil stats, plant stages, next-turn exchange.
+Hold **Tab** (quick-select wheel): fast tool/lens switching.
+
+
+================================================================================
+13. HUD & SIDEBAR UI (2026 STATE)
+================================================================================
+
+Civ-style **edge tabs** on left/right screen edges toggle collapsible sidebars:
+  WeatherDock, CalendarDock, tile inspector / soil profile, action queue, etc.
+Panels start collapsed; yellow border on active tab.
+
+Runtime-built: StatusStrip (top), InfoDock content, forecast panels.
+Scene-backed: Bottom_Dashboard tool rows, pause overlay, seed/produce pickers, almanac.
+
+Farmer character: AnimatedSprite2D + farmer_character_anim.gd (8-dir walk from PixelLab
+inbox pipeline — see obsidian/25_Inbox_Farmer_Animations.md).
+
+
+================================================================================
+14. NARRATIVE & CAMPAIGNS (OPENCORE)
+================================================================================
+
+DataScenario (scripts/data_scenario.gd):
+  Default campaign: "tutorial" / Permaculture 101
+  dialogue_csv: data/opencore_dialogue.csv
+  weather_csv: data/opencore_weather.csv
+
+NarrativeData / data_narrative.gd: lore.csv, dialogue.csv (RFC4180 quoted fields).
+Narrative popups triggered from starting_map; must always offer Continue button
+(softlock guard in ui_narrative_popup.gd).
+
+active_campaign_id on FarmDataManager; premium campaigns (oakhaven_defence, desert)
+may still have code hooks but are not the opencore focus.
+
+
+================================================================================
+15. CONTENT EDITING GUIDE (FOR DESIGN PROPOSALS)
+================================================================================
+
+| Want to change…              | Edit…                                      |
+|------------------------------|--------------------------------------------|
+| Plant stats / new crop       | data/plants_v3.csv + flora sprites         |
+| Guild rules                  | data/data_guilds.gd or data_superguilds.gd |
+| Tutorial dialogue/weather    | data/opencore_*.csv                        |
+| Almanac help text            | data/data_almanac.gd                       |
+| Placeable structures         | data/data_objects.gd                       |
+| Compost/additive blurbs      | data/data_additives.gd                     |
+| Design lore / mechanics docs | obsidian/*.md                              |
+| Tool behavior                | starting_map.gd (engineering)              |
+| Economy/turn/energy          | farm_data_manager.gd                       |
+
+When adding a plant:
+  1. Row in plants_v3.csv with full V3 columns
+  2. Folder assets/base/sprites/flora/{id}/stage_0–5.png
+  3. Update STAGE_SPRITE_MANIFEST.txt
+  4. Wire into guilds if needed (use exact id strings)
+  5. Seed picker auto-lists from data_plants.DATA by layer
+
+
+================================================================================
+16. OBSIDIAN VAULT INDEX (DESIGN LORE)
+================================================================================
+
+Location: obsidian/  (Markdown knowledge base; .gdignore shields from Godot)
+
+Start here:
+  100_Welcome_to_the_Vault.md — table of contents
+  00_Soil_Ecosystem.md — 9-stat philosophy
+  05_Plant_Ecology.md, 06_Plant_Data_Schema.md
+  26_Six_Stage_Growth_and_Dynamic_Exchange.md — CURRENT plant growth bible
+  07_V3_Ecology_and_Weather_Mechanics.md — night loop (note: exchange now stage-scaled)
+  10_Open_Core_Architecture.md — legal/asset split
+  11_The_Weekly_Cycle.md — player resources
+  12_Understanding_Guilds.md, 13_Superguild_Networks.md
+  14_The_Hydrology_of_Yorkshire.md — swales, stop-spread-soak
+  09_Tutorial_and_Onboarding_Flow.md — Gen1 tutorial beats
+
+Yorkshire superguild design pages: 16–23, 103–111 (Orchard Trinity, Boggart Brake,
+Hungry Valley, Forest Floor Harvest, Aromatic Ward, Comfrey Engine, Living Tilth,
+Clay Breakers, etc.)
+
+Duplicate/archive tree under obsidian/P4S 23.5.26 pre open source…/ — prefer root
+obsidian/ files for current canon.
+
+Premium ghost archive: obsidian/11_Premium_Ghost_Story_Archive.md (gitignored).
+
+
+================================================================================
+17. RECENT ENGINEERING STATE (2026-06 / 2026-07)
+================================================================================
+
+Done and live:
+  - V3 soil web replaces legacy m/n automata
+  - 33-plant database with days_to_mature / days_to_senescence
+  - 6-stage growth visuals + stage-scaled nutrient exchange
+  - Plant nutrient forecast (ghost bars + Shift tooltip)
+  - Data view lenses (soil/plant micro charts, nutrient transfer waves)
+  - Fantasy 12-month calendar synced to gameplay seasons
+  - Weather dock with 5-day certainty + extended probabilistic forecast
+  - Stream clearance around farmhouse on procedural gen
+  - Farmer 8-direction walk animations from PixelLab inbox
+  - Obsidian vault migrated to obsidian/ root
+  - Edge-tab sidebar HUD pattern
+
+Art pipeline backlog:
+  - 197/198 stage sprites still NEED painting (only nettle stage_4 exists)
+  - inbox/pixellab sprites/ has flattened PixelLab exports for reference
+  - ASSET_MANIFEST.txt lists full opencore sprite taxonomy
+
+Known doc drift:
+  - obsidian/07_V3_Ecology_and_Weather_Mechanics.md Phase B describes raw CSV deltas;
+    implementation now uses PlantGrowth.scaled_exchange_deltas() — trust §8a here.
+
+
+================================================================================
+18. HOW TO HELP AS A GAME DESIGN ASSISTANT
+================================================================================
+
+DO:
+  - Think in permaculture terms: guilds, succession, soil food web, water retention.
+  - Propose plant rows as CSV field sets aligned with 06_Plant_Data_Schema.md.
+  - Respect the three-layer vertical stack and 1-tile vs 3×3 guild distinction.
+  - Consider gatekeeper pain (too wet/dry/hungry) AND exchange deltas together.
+  - Account for growth stage when discussing nutrient draw (seedling ≠ mature tree).
+  - Reference Yorkshire hydrology and regional superguilds for flavour.
+  - Suggest player-readable feedback (floating text, Shift tooltip, lens colors).
+  - Keep opencore/premium boundary clean.
+
+DON'T:
+  - Invent a 7th growth stage or parallel fertility stat without strong justification.
+  - Assume Stardew timing — turns are days; mature_turn varies 3–28+ by species.
+  - Propose mechanics that require premium assets or ghost-story code in opencore.
+  - Ignore spread_rate on invasives (himalayan_balsam = 10, very aggressive).
+  - Treat structure cell key as only buildings — it's overloaded (see §6).
+
+USEFUL DESIGN QUESTIONS TO EXPLORE:
+  - How does a new superguild reward wetland planting (willow + reed + alder)?
+  - What gatekeeper band makes Yorkshire clay feel punishing but fair?
+  - Which annuals teach nitrogen bankruptcy in Gen1 tutorial?
+  - How should senescence (stage 5) affect chop-and-drop vs living mulch?
+  - What forecast uncertainty is fun vs frustrating at day 15?
+
+
+================================================================================
+19. KEY CODE ENTRY POINTS (IF DESIGN TOUCHES IMPLEMENTATION)
+================================================================================
+
+  starting_map.gd::_process_plant_biology   — growth gatekeepers + exchange
+  starting_map.gd::advance_turn / sleep     — overnight orchestration
+  scripts/plant_growth.gd                 — stages, multipliers, sprite paths
+  scripts/plant_nutrient_forecast.gd      — UI forecast mirror of exchange
+  scripts/farm_data_manager.gd            — calendar, season, grid, economy
+  scripts/hud.gd                          — tools, docks, forecast UI
+  data/data_plants.gd                     — CSV loader for plants_v3.csv
+
+
+================================================================================
+20. CONTACT / CONTINUITY
+================================================================================
+
+Engineering change log: docs/cursor-action-log.txt (append-only, newest at bottom)
+Architecture revisions: docs/ARCHITECTURE.txt (revision log at bottom)
+
+When Gemini proposes a feature, ask: "Which CSV rows, vault pages, and player UI
+surface would change?" — that keeps design aligned with how this project actually ships.
+
+================================================================================
+END OF BRIEF
+================================================================================

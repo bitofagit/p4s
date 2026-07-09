@@ -1,4 +1,0 @@
---- session 2026-06-04T20:55:29 ---
-Godot 4.6.2-stable (official) | log: /Users/apple/Documents/P4S/P4S 9.5.26 im taking the campaigns out to go opencore/docs/godot_error_log_2026-06-04_20-55-29.txt
-[20:56:32] [LOG] Grid saved successfully to: user://campaigns/custom/starting_grid.json
-[20:56:32] [LOG] MapEditor: Saved to user://campaigns/custom/starting_grid.json
