@@ -233,11 +233,16 @@ func _draw() -> void:
 		return
 	if map_ref.get("active_lens") not in ["soil_data", "plant_data"]:
 		return
-	if not map_ref.is_sleeping and not DataViewLayout.waves_enabled(map_ref):
-		return
 
 	var bounds: Rect2i = DataViewLayout.visible_tile_bounds(map_ref)
 	var now: float = Time.get_ticks_msec() / 1000.0
+
+	if not MetaManager.data_lens_fx:
+		_draw_flat_rim_blocks(bounds, now)
+		return
+
+	if not map_ref.is_sleeping and not DataViewLayout.waves_enabled(map_ref):
+		return
 
 	if _prelude_active and _flows.is_empty():
 		_draw_sleep_prelude(bounds, now)
@@ -521,6 +526,53 @@ func _draw_pixel_cross(
 			var col := Color(base.r, base.g, base.b, clampf(alpha, 0.0, 1.0))
 			_draw_soft_dot(p, norm, col, alpha, pixel)
 		cursor += float(count) * pixel
+
+
+func _draw_flat_rim_blocks(bounds: Rect2i, now: float) -> void:
+	if _prelude_active and _flows.is_empty():
+		var age: float = now - _sleep_epoch
+		var alpha: float = 0.18 * (0.5 + 0.5 * sin(age * 2.2))
+		for x in range(bounds.position.x, bounds.position.x + bounds.size.x):
+			for y in range(bounds.position.y, bounds.position.y + bounds.size.y):
+				for d in _CARDINAL_DIRS:
+					var nx: int = x + d.x
+					var ny: int = y + d.y
+					if nx < 0 or ny < 0 or nx >= FarmDataManager.map_width or ny >= FarmDataManager.map_height:
+						continue
+					var mo: float = float(FarmDataManager.grid_data[x][y].get("moisture", 0.0))
+					var nmo: float = float(FarmDataManager.grid_data[nx][ny].get("moisture", 0.0))
+					if absf(mo - nmo) < 0.15:
+						continue
+					var from_cell := Vector2i(x, y)
+					var to_cell := Vector2i(nx, ny)
+					if mo < nmo:
+						from_cell = Vector2i(nx, ny)
+						to_cell = Vector2i(x, y)
+					var mid := (
+						DataViewLayout.rim_exit_px(map_ref, from_cell, to_cell)
+						+ DataViewLayout.rim_entry_px(map_ref, from_cell, to_cell)
+					) * 0.5
+					draw_rect(Rect2(mid - Vector2(10, 10), Vector2(20, 20)), Color(0.45, 0.72, 0.95, alpha), true)
+		return
+	if _flows.is_empty():
+		return
+	var ribbons: Array[Dictionary] = _collect_edge_ribbons(bounds, now)
+	for ribbon in ribbons:
+		var from_cell: Vector2i = ribbon["from"]
+		var to_cell: Vector2i = ribbon["to"]
+		var amounts: Dictionary = ribbon["amounts"]
+		var total: float = float(ribbon.get("total", 0.0))
+		if total < FLOW_THRESHOLD:
+			continue
+		var harmony: Color = _harmonic_blend(amounts, total)
+		var rim_out: Vector2 = DataViewLayout.rim_exit_px(map_ref, from_cell, to_cell)
+		var rim_in: Vector2 = DataViewLayout.rim_entry_px(map_ref, from_cell, to_cell)
+		var mid: Vector2 = (rim_out + rim_in) * 0.5
+		var age: float = now - float(ribbon.get("born", 0.0))
+		var fade: float = _fade_for_age(age)
+		var block := Rect2(mid - Vector2(12, 12), Vector2(24, 24))
+		draw_rect(block, Color(harmony.r, harmony.g, harmony.b, 0.55 * fade), true)
+		draw_rect(block, Color(harmony.r, harmony.g, harmony.b, 0.85 * fade), false, 2.0)
 
 
 func _draw_soft_dot(center: Vector2, _norm: Vector2, col: Color, alpha: float, pixel: float) -> void:

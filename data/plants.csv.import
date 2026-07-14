@@ -1,19 +1,3 @@
 [remap]
 
-importer="csv_translation"
-type="Translation"
-uid="uid://bcud0snfsu4ad"
-
-[deps]
-
-files=["res://data/plants.name.translation", "res://data/plants.latin.translation", "res://data/plants.cost.translation", "res://data/plants.atlas.translation", "res://data/plants.layer.translation", "res://data/plants.mature.translation", "res://data/plants.lifecycle.translation", "res://data/plants.n.translation", "res://data/plants.m.translation", "res://data/plants.yield.translation", "res://data/plants.energy.translation", "res://data/plants.soil.translation", "res://data/plants.soil.translation", "res://data/plants.desc.translation", "res://data/plants.frost.translation", "res://data/plants.shade.translation", "res://data/plants.drought.translation", "res://data/plants.root.translation", "res://data/plants.attracts.translation", "res://data/plants.repels.translation", "res://data/plants.coppice.translation", "res://data/plants.windbreak.translation", "res://data/plants.dynamic.translation", "res://data/plants.nitrogen.translation", "res://data/plants.mycorrhizal.translation", "res://data/plants.harvest.translation", "res://data/plants.edible.translation", "res://data/plants.toxicity.translation", "res://data/plants.spread.translation"]
-
-source_file="res://data/plants.csv"
-dest_files=["res://data/plants.name.translation", "res://data/plants.latin.translation", "res://data/plants.cost.translation", "res://data/plants.atlas.translation", "res://data/plants.layer.translation", "res://data/plants.mature.translation", "res://data/plants.lifecycle.translation", "res://data/plants.n.translation", "res://data/plants.m.translation", "res://data/plants.yield.translation", "res://data/plants.energy.translation", "res://data/plants.soil.translation", "res://data/plants.soil.translation", "res://data/plants.desc.translation", "res://data/plants.frost.translation", "res://data/plants.shade.translation", "res://data/plants.drought.translation", "res://data/plants.root.translation", "res://data/plants.attracts.translation", "res://data/plants.repels.translation", "res://data/plants.coppice.translation", "res://data/plants.windbreak.translation", "res://data/plants.dynamic.translation", "res://data/plants.nitrogen.translation", "res://data/plants.mycorrhizal.translation", "res://data/plants.harvest.translation", "res://data/plants.edible.translation", "res://data/plants.toxicity.translation", "res://data/plants.spread.translation"]
-
-[params]
-
-compress=1
-delimiter=0
-unescape_keys=false
-unescape_translations=true
+importer="keep"

@@ -2719,12 +2719,10 @@ func _setup_inspector_ui() -> void:
 	inspector_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inspector_preview_box.add_child(inspector_icon)
 
-	inspector_understory_rect = _make_inspector_diorama_rect("understory_rect")
-	inspector_understory_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	inspector_understory_rect.scale = Vector2(1.0, 1.0)
-	inspector_understory_rect.position = Vector2.ZERO
-	inspector_preview_box.add_child(inspector_understory_rect)
-
+	# Diorama layers back-to-front (child order = draw order), mirroring the map:
+	# canopy shadow → canopy → understory → ground. The canopy pair is scaled up
+	# and offset up-left to recreate the map's overhang; the shadow sits 5 px
+	# down-right of the canopy for depth.
 	inspector_canopy_shadow_rect = _make_inspector_diorama_rect("canopy_shadow_rect")
 	inspector_canopy_shadow_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	inspector_canopy_shadow_rect.modulate = Color(0, 0, 0, 0.5)
@@ -2737,6 +2735,12 @@ func _setup_inspector_ui() -> void:
 	inspector_canopy_rect.scale = Vector2(1.15, 1.15)
 	inspector_canopy_rect.position = Vector2(-35, -45)
 	inspector_preview_box.add_child(inspector_canopy_rect)
+
+	inspector_understory_rect = _make_inspector_diorama_rect("understory_rect")
+	inspector_understory_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inspector_understory_rect.scale = Vector2(1.0, 1.0)
+	inspector_understory_rect.position = Vector2.ZERO
+	inspector_preview_box.add_child(inspector_understory_rect)
 
 	inspector_ground_rect = _make_inspector_diorama_rect("ground_rect")
 	inspector_ground_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

@@ -52,12 +52,23 @@ project.godot run/main_scene -> main_menu.tscn (scripts/main_menu.gd)
     -> change_scene to scenes/world.tscn
 
 world.tscn
-    World (Node2D)
+    World (Node2D, no y-sort)
       WeatherModulate (CanvasModulate)
-      TileMapLayer  <- scripts/starting_map.gd   [group: "map"]  (terrain atlas)
-      GroundLayer   <- TileMapLayer z=1, flora_atlas.png (nearest, no mipmaps)
-      UnderstoryLayer / CanopyLayer  (z=2, z=3, same flora TileSet)
-      Camera2D     <- scripts/world.gd
+      TileMapLayer  <- scripts/starting_map.gd   [group: "map"]  (terrain atlas;
+                       no y-sort, rendering_quadrant_size=32)
+      CanopyLayer     (z=1, pos -25,-35, no y-sort)  \  flora_atlas.png TileSet
+      UnderstoryLayer (z=2, no y-sort)                > (nearest, no collision/nav,
+      GroundLayer     (z=3, no y-sort)               /   quadrant 32)
+      Camera2D     <- scripts/world.gd (dynamic zoom culling of flora layers)
+
+Graphics settings (MetaManager → shadow_logic_meta.json): 4-tier preset slider
+(Low / Medium / High / Custom). Safe boot with no saved meta initialises Low
+(groundcover OFF, understory OFF, zoom culling ON, low_end_gpu ON — refined by
+GPU detection for Iris Xe / Apple / NVIDIA). Custom stores individual toggles.
+Exposed via ui_graphics_panel.gd PresetSlider + detail checkboxes in main menu
+and pause menu.
+Flora TileMapLayers never use y-sort (y-sort = one canvas item per cell; kills
+VMware/iGPU). Layer stacking is z_index + offsets only.
 
 Flora sprites: pre-baked offline to assets/base/sprites/atlas/flora_atlas.png
 (14×15 grid, 200 px cells) + data/flora_atlas_map.json. Rebake via
@@ -89,8 +100,10 @@ RadioManager      scripts/radio_manager.gd
                   Music / SFX; track_changed and beat hooks for UI/gameplay.
 
 GodotDocsLog      scripts/godot_docs_log.gd
-                  OS Logger → docs/godot_error_log_YYYY-MM-DD_HH-mm-ss.txt (max 10);
-                  index at docs/godot_error_log.txt.
+                  OS Logger → session logs. Editor: docs/godot_error_log_*.txt (+ index).
+                  Export: {exe}/P4S_logs/ (fallback user://logs/ + P4S_WHERE_ARE_MY_LOGS.txt
+                  beside exe). Open/close system info + startup milestones in each session file;
+                  export also writes P4S_logs/README.txt and latest_session.txt.
 
 
 --------------------------------------------------------------------------------
@@ -188,3 +201,11 @@ user://shadow_logic_meta.json — MetaManager
 2026-06-11 — HUD sidebars: Civ-style edge tab strips (left/right symbol buttons) toggle and slide the UISidebarDock panels; all panels collapsed by default.
 2026-06-11 — WeatherDock + CalendarDock split from InfoDock; FarmDataManager 336-day calendar (MONTHS/WEEKDAYS, get_current_date_info).
 2026-07-09 — Flora rendering: pre-baked 14×15 grid atlas; World Ground/Understory/Canopy TileMapLayers; runtime atlas stitch removed.
+2026-07-09 — GodotDocsLog: export builds write P4S_logs beside exe (user:// fallback); session open/close info + milestones.
+2026-07-10 — Optimisation sweep: flora z-order Canopy(1)/Understory(2)/Ground(3); quadrant 16 + y-sort/collision trims; MetaManager graphics settings + camera zoom culling; logger per-frame duplicate throttle.
+2026-07-10 — Renderer switched Forward+/D3D12 → GL Compatibility (VM/iGPU target); 60 fps cap; 30 ms audio latency; FloraLodOverlay far-zoom stand-in.
+2026-07-10 — VMware draw-call fix: flora y-sort OFF (was one item/cell → ~12k objs); quadrant 32; understory/ground cull at zoom 0.40 (LOD at default 0.25); structure overlay viewport-culled; rain 80 on virtual GPUs.
+2026-07-10 — VMware potato mode: MetaManager.low_end_gpu (VMware/SVGA) enables content_scale 0.5 + terrain TileMap streaming; all flora culled below zoom 0.45 with viewport-culled LOD (incl. canopy); structure overlay water washes removed.
+2026-07-10 — VMware potato mode v2: no content_scale hack; flora TileMaps permanently off on low-end (LOD only); cheap terrain stream + zoom floor 0.35 / start 0.55.
+2026-07-14 — Flora LOD: bake_flora_lod_atlas + FloraLodLayers (mid/far low-res atlas TileMaps in assets/base/sprites/atlas/lod/); replaced FloraLodOverlay coloured rects; zoom tiers in data/flora_lod_map.json.
+2026-07-14 — Renderer mobile (Vulkan) baseline; MetaManager 4-tier graphics presets + safe-boot Low; ui_graphics_panel PresetSlider with auto-Custom detection.

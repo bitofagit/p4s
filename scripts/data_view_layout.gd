@@ -125,6 +125,8 @@ static func camera_zoom(map_ref: Node2D) -> float:
 
 
 static func waves_enabled(map_ref: Node2D) -> bool:
+	if not MetaManager.data_lens_fx:
+		return false
 	return camera_zoom(map_ref) >= MIN_WAVE_ZOOM
 
 

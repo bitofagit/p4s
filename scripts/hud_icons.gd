@@ -63,7 +63,7 @@ static func apply_popup_icon(popup: PopupMenu, item_index: int, key: String) -> 
 
 
 static func _fit_icon(tex: Texture2D, max_px: int) -> Texture2D:
-	if max_px <= 0:
+	if max_px <= 0 or tex == null or tex.get_width() == 0 or tex.get_height() == 0:
 		return tex
 	var w := tex.get_width()
 	var h := tex.get_height()

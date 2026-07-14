@@ -13,6 +13,7 @@ you want design help. For implementation detail, also point Gemini at:
   - docs/CODEBASE_GUIDE.md      (where code lives)
   - docs/ARCHITECTURE.txt         (structural stack)
   - docs/SPRITE_RENDERING_AND_PERFORMANCE.txt  (atlas / flora / slowdown brainstorm)
+  - docs/GEMINI_WINDOWS_LAPTOP_OPTIMISATION.txt (low-end Windows i5 / iGPU target brief)
   - docs/GEMINI_NANOALPHA_SPRITE_PIPELINE.txt  (batch background removal for flora PNGs)
   - obsidian/                   (design vault — markdown, not loaded by Godot)
   - docs/cursor-action-log.txt  (recent engineering changes, append-only)

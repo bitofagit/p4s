@@ -30,6 +30,12 @@ func _ready() -> void:
 			child.gui_input.connect(func(event): _on_list_gui_input(event, child))
 			child.mouse_exited.connect(func(): _hovered_plant_id = "")
 
+	call_deferred("_setup_tooltip_overlay")
+
+	hide()
+
+
+func _setup_tooltip_overlay() -> void:
 	_tip_canvas = CanvasLayer.new()
 	_tip_canvas.layer = 128
 	get_tree().root.add_child(_tip_canvas)
@@ -62,8 +68,6 @@ func _ready() -> void:
 			_tooltip_panel.hide()
 			_hovered_plant_id = ""
 	)
-
-	hide()
 
 
 func populate_and_show() -> void:
@@ -106,6 +110,8 @@ func populate_and_show() -> void:
 
 
 func _process(_delta: float) -> void:
+	if not is_instance_valid(_tooltip_panel):
+		return
 	if not visible:
 		_tooltip_panel.hide()
 		return

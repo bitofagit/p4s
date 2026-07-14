@@ -87,6 +87,11 @@ const FLORA_LAYER_OFFSETS: Dictionary = {
 
 const FLORA_Y_SORT_ORIGIN := 200
 
+const FloraLodLayersScript := preload("res://scripts/flora_lod_layers.gd")
+const FloraLodVectorScript := preload("res://scripts/flora_lod_vector.gd")
+var flora_lod_layers: FloraLodLayersScript
+var flora_lod_vector: FloraLodVectorScript
+
 @onready var _save_manager: Node = get_node("/root/SaveManager")
 
 ## Weighted flood-fill from the farmhouse; cheap on cells with has_path (roads / duck corridors).
@@ -324,6 +329,11 @@ const INFRA_LAND_TYPES: Array[String] = [
 	"road", "bridge", "river", "stream", "house", "house_door",
 ]
 
+## Terrain tools that commit `grid_data` immediately when queued (night pass is idempotent).
+const IMMEDIATE_TERRAIN_QUEUE_TOOLS: Array[String] = [
+	"rotovate", "hoe", "e_tiller", "scythe", "uproot",
+]
+
 
 func _land_is_infra(land: String) -> bool:
 	return land in INFRA_LAND_TYPES
@@ -337,6 +347,57 @@ func _clear_cell_plant_data(cell: Dictionary, death_reason: String = "") -> void
 			FarmDataManager.record_plant_death(cell, layer_key, plant_id, death_reason)
 		cell[layer_key] = ""
 		FarmDataManager.erase_plant_tracking_keys(cell, layer_key)
+
+
+func _terrain_tool_commits_on_queue(tool: String) -> bool:
+	return tool in IMMEDIATE_TERRAIN_QUEUE_TOOLS
+
+
+func _capture_terrain_snapshot(cell: Dictionary) -> Dictionary:
+	return {
+		"prev_land": str(cell.get("land", "wild")),
+		"prev_has_path": bool(cell.get("has_path", false)),
+	}
+
+
+func _commit_immediate_terrain_tool(cell: Dictionary, tool: String) -> void:
+	match tool:
+		"rotovate", "hoe", "e_tiller":
+			if cell.get("has_path", false):
+				cell["has_path"] = false
+			cell["land"] = "cultivated"
+			cell["moisture"] = minf(float(cell.get("moisture", 5.0)), 10.0)
+			_clear_cell_plant_data(cell)
+		"scythe":
+			cell["land"] = "cultivated"
+		"uproot":
+			cell["land"] = "wild"
+		_:
+			pass
+
+
+func _restore_terrain_snapshot(cell: Dictionary, snapshot: Variant) -> void:
+	if typeof(snapshot) != TYPE_DICTIONARY or snapshot.is_empty():
+		return
+	cell["land"] = str(snapshot.get("prev_land", cell.get("land", "wild")))
+	cell["has_path"] = bool(snapshot.get("prev_has_path", false))
+
+
+func _restore_queued_terrain_snapshot(action: Dictionary) -> void:
+	var ap: Vector2i = action.get("pos", Vector2i(-1, -1))
+	if ap.x < 0 or ap.x >= _map_w() or ap.y < 0 or ap.y >= _map_h():
+		return
+	_restore_terrain_snapshot(FarmDataManager.grid_data[ap.x][ap.y], action.get("terrain_snapshot", {}))
+
+
+func _reapply_queued_terrain_commit(action: Dictionary) -> void:
+	var tool := str(action.get("action", ""))
+	if not _terrain_tool_commits_on_queue(tool):
+		return
+	var ap: Vector2i = action.get("pos", Vector2i(-1, -1))
+	if ap.x < 0 or ap.x >= _map_w() or ap.y < 0 or ap.y >= _map_h():
+		return
+	_commit_immediate_terrain_tool(FarmDataManager.grid_data[ap.x][ap.y], tool)
 
 
 func _normalize_editor_land_cell(cell: Dictionary) -> void:
@@ -377,7 +438,7 @@ func _apply_farmhouse_from_editor_origin(origin: Vector2i) -> void:
 	home_pos = origin + Vector2i(1, 2)
 
 
-func _replacement_land_for_stream_clearance(x: int, y: int) -> String:
+func _replacement_land_for_stream_clearance(x: int, _y: int) -> String:
 	if x >= FarmDataManager.player_bounds_right:
 		return "cultivated"
 	return "wild"
@@ -1020,9 +1081,9 @@ func _ready() -> void:
 	for key in dynamic_folders:
 		for file in dynamic_folders[key]["files"]:
 			var tex = load(dynamic_folders[key]["path"] + "/" + file) as Texture2D
-			if tex:
+			if tex and tex.get_width() > 0 and tex.get_height() > 0:
 				var img = tex.get_image()
-				if img:
+				if img and not img.is_empty():
 					if img.get_size() != Vector2i(200, 200):
 						img.resize(200, 200)
 					image.blend_rect(img, Rect2i(0, 0, 200, 200), Vector2i(current_atlas_x * 200, 0))
@@ -1095,6 +1156,17 @@ func _ready() -> void:
 	capillary_overlay.map_ref = self
 	capillary_overlay.z_index = 5
 	add_child(capillary_overlay)
+
+	# Far-zoom flora: low-res atlas TileMapLayers (bake_flora_lod_atlas.gd).
+	flora_lod_layers = FloraLodLayersScript.new()
+	flora_lod_layers.name = "FloraLodLayers"
+	flora_lod_layers.z_index = 3
+	add_child(flora_lod_layers)
+	flora_lod_vector = FloraLodVectorScript.new()
+	flora_lod_vector.name = "FloraLodVector"
+	flora_lod_vector.z_index = 3
+	flora_lod_vector.visible = false
+	add_child(flora_lod_vector)
 
 	data_view_panel_overlay = DataViewOverlayNode.DataViewPanelOverlayNode.new()
 	data_view_panel_overlay.name = "DataViewPanelOverlay"
@@ -1454,10 +1526,11 @@ void fragment() {
 			if sp_dev:
 				sp_dev.allowed_seed_ids.clear()
 
-	_init_farm_astar()
+	_ensure_farm_astar_ready()
 	_sync_hud_status()
 	_refresh_season_display()
 	call_deferred("_snap_camera_to_farmhouse")
+	GodotDocsLog.log_milestone("farm_map_ready")
 
 
 func _snap_camera_to_farmhouse() -> void:
@@ -1466,7 +1539,13 @@ func _snap_camera_to_farmhouse() -> void:
 	var target := map_to_local(farmhouse_pos)
 	main_camera.global_position = target
 	main_camera.desired_pos = target
-	if FarmDataManager.map_width >= 100:
+	# Low-end: start more zoomed-in so fewer terrain tiles are in view.
+	if MetaManager.low_end_gpu:
+		main_camera.zoom = Vector2(0.6, 0.6)
+		main_camera.target_zoom = 0.6
+		if main_camera.get("min_zoom") != null:
+			main_camera.min_zoom = 0.4
+	elif FarmDataManager.map_width >= 100:
 		main_camera.zoom = Vector2(0.25, 0.25)
 		main_camera.target_zoom = 0.25
 	elif FarmDataManager.map_width <= 32:
@@ -1477,6 +1556,9 @@ func _snap_camera_to_farmhouse() -> void:
 		main_camera.target_zoom = 0.8
 	if main_camera.has_method("_apply_map_bounds_from_farm"):
 		main_camera._apply_map_bounds_from_farm()
+	if main_camera.has_method("_update_zoom_culling"):
+		main_camera._update_zoom_culling()
+	_apply_flora_visibility_settings()
 
 
 func _sync_hud_money() -> void:
@@ -2152,6 +2234,7 @@ func close_almanac() -> void:
 
 
 func _refresh_all_visuals() -> void:
+	## Full-grid pass — map load, save load, wake from sleep, lens toggles only.
 	update_visuals()
 	apply_lens()
 	if is_instance_valid(structure_overlay) and not is_sleeping:
@@ -2161,6 +2244,34 @@ func _refresh_all_visuals() -> void:
 	var hover_layer_refresh = get_node_or_null("HoverLayer")
 	if hover_layer_refresh:
 		hover_layer_refresh.queue_redraw()
+
+
+func _refresh_overlay_redraws() -> void:
+	if is_instance_valid(preview_overlay):
+		preview_overlay.queue_redraw()
+	if is_instance_valid(structure_overlay) and not is_sleeping:
+		structure_overlay.queue_redraw()
+	var hover_layer_refresh = get_node_or_null("HoverLayer")
+	if hover_layer_refresh:
+		hover_layer_refresh.queue_redraw()
+
+
+func _refresh_cells_visuals(cells: Array) -> void:
+	var seen: Dictionary = {}
+	for entry in cells:
+		var pos: Vector2i
+		if entry is Vector2i:
+			pos = entry
+		elif entry is Dictionary and entry.get("pos", Vector2i(-999999, -999999)) is Vector2i:
+			pos = entry["pos"]
+		else:
+			continue
+		var key := "%d,%d" % [pos.x, pos.y]
+		if seen.has(key):
+			continue
+		seen[key] = true
+		_update_single_cell_visuals(pos)
+	_refresh_overlay_redraws()
 
 
 func _refresh_minimap() -> void:
@@ -2218,15 +2329,9 @@ func _get_flora_layer(layer_key: String) -> TileMapLayer:
 			return null
 
 
-func _build_flora_tile_set() -> TileSet:
-	var meta := PlantGrowth.flora_atlas_meta()
-	var cols := int(meta.get("columns", 14))
-	var rows := int(meta.get("rows", 15))
-	var tile_sz := int(meta.get("tile_size", 200))
-	var atlas_path := str(meta.get("atlas_path", "res://assets/base/sprites/atlas/flora_atlas.png"))
+func _build_flora_tile_set_from_atlas(atlas_path: String, cols: int, rows: int, tile_sz: int) -> TileSet:
 	var tex := load(atlas_path) as Texture2D
 	if tex == null:
-		push_warning("starting_map: missing flora atlas at %s — run bake_flora_atlas.gd" % atlas_path)
 		return null
 	var source := TileSetAtlasSource.new()
 	source.texture = tex
@@ -2240,10 +2345,43 @@ func _build_flora_tile_set() -> TileSet:
 	return ts
 
 
+func _build_flora_tile_set() -> TileSet:
+	var meta := PlantGrowth.flora_atlas_meta()
+	var cols := int(meta.get("columns", 14))
+	var rows := int(meta.get("rows", 15))
+	var tile_sz := int(meta.get("tile_size", 200))
+	var atlas_path := str(meta.get("atlas_path", "res://assets/base/sprites/atlas/flora_atlas.png"))
+	return _build_flora_tile_set_from_atlas(atlas_path, cols, rows, tile_sz)
+
+
+func _build_flora_lod_tile_sets() -> Dictionary:
+	var meta := PlantGrowth.flora_lod_meta()
+	if meta.is_empty():
+		return {}
+	var cols := int(meta.get("columns", 14))
+	var rows := int(meta.get("rows", 15))
+	var tile_sz := int(meta.get("tile_size", 200))
+	var out: Dictionary = {}
+	for tier_v in meta.get("tiers", []):
+		if not tier_v is Dictionary:
+			continue
+		var tier: Dictionary = tier_v
+		var tier_id := str(tier.get("id", ""))
+		var path := str(tier.get("atlas_path", ""))
+		if tier_id == "" or path == "" or not ResourceLoader.exists(path):
+			push_warning("starting_map: missing LOD atlas for tier '%s' at %s — run bake_flora_lod_atlas.gd" % [tier_id, path])
+			continue
+		var ts := _build_flora_tile_set_from_atlas(path, cols, rows, tile_sz)
+		if ts:
+			out[tier_id] = ts
+	return out
+
+
 func _setup_flora_layers() -> void:
 	_flora_tile_set = _build_flora_tile_set()
 	if _flora_tile_set == null:
 		return
+	var lod_tile_sets := _build_flora_lod_tile_sets()
 	var world := _world_root()
 	ground_layer = get_node_or_null("GroundLayer") as TileMapLayer
 	understory_layer = get_node_or_null("UnderstoryLayer") as TileMapLayer
@@ -2263,16 +2401,55 @@ func _setup_flora_layers() -> void:
 		if layer.get_parent() != self and layer.get_parent() == world:
 			layer.reparent(self, true)
 		layer.position = FLORA_LAYER_OFFSETS.get(layer_key, Vector2.ZERO)
-		layer.z_index = {"understory": 1, "canopy": 2, "ground": 3}.get(layer_key, 1)
-		layer.y_sort_enabled = true
+		# Back-to-front: canopy (1) → understory (2) → ground (3).
+		layer.z_index = {"canopy": 1, "understory": 2, "ground": 3}.get(layer_key, 1)
+		# NEVER enable TileMapLayer y-sort on flora. Y-sort forces one canvas
+		# item per planted cell (thousands of draws on a full farm) and tanks
+		# VMware / iGPU submission. Layer z_index + offsets handle stacking.
+		layer.y_sort_enabled = false
 		layer.y_sort_origin = FLORA_Y_SORT_ORIGIN
 		layer.tile_set = _flora_tile_set
 		layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	y_sort_enabled = true
-	y_sort_origin = FLORA_Y_SORT_ORIGIN
-	var world_root := _world_root()
-	if world_root is Node2D:
-		(world_root as Node2D).y_sort_enabled = true
+		# Larger quadrants = fewer canvas items when y-sort is off (batched).
+		layer.rendering_quadrant_size = 32
+		layer.collision_enabled = false
+		layer.navigation_enabled = false
+	# Terrain layer: flat 2D grid — no y-sort needed; pathing uses farm_astar.
+	y_sort_enabled = false
+	rendering_quadrant_size = 32
+	if is_instance_valid(flora_lod_layers) and not lod_tile_sets.is_empty():
+		flora_lod_layers.setup(lod_tile_sets, FLORA_LAYER_OFFSETS, FLORA_Y_SORT_ORIGIN)
+	_apply_flora_visibility_settings()
+
+
+## Base visibility from Graphics Settings (MetaManager). The camera's dynamic
+## zoom culling further hides layers while zoomed out, but never shows a layer
+## the user has switched off.
+func _apply_flora_visibility_settings() -> void:
+	if is_instance_valid(ground_layer):
+		ground_layer.visible = MetaManager.render_groundcover
+	if is_instance_valid(understory_layer):
+		understory_layer.visible = MetaManager.render_understory
+	# Canopy has no user toggle — visibility is owned by camera zoom culling.
+	# Push a cull refresh so low-end / boot don't leave stale LOD-only mode.
+	if is_instance_valid(main_camera) and main_camera.has_method("_update_zoom_culling"):
+		main_camera._update_zoom_culling()
+
+
+## Live refresh from ui_graphics_panel preset / toggle changes.
+func apply_meta_graphics_settings() -> void:
+	_apply_flora_visibility_settings()
+	if is_instance_valid(capillary_overlay):
+		var cap_on := MetaManager.advanced_overlays
+		capillary_overlay.visible = cap_on
+		capillary_overlay.set_process(cap_on)
+	if is_instance_valid(structure_overlay):
+		structure_overlay.queue_redraw()
+	_sync_weather_particles()
+	if is_instance_valid(main_camera) and main_camera.has_method("_update_zoom_culling"):
+		main_camera._update_zoom_culling()
+	if _is_data_lens():
+		_redraw_data_lens_overlays()
 
 
 func _paint_flora_cell(pos: Vector2i, visual_cell: Dictionary) -> void:
@@ -2290,8 +2467,16 @@ func _paint_flora_cell(pos: Vector2i, visual_cell: Dictionary) -> void:
 				layer_node.set_cell(pos, 0, tile_coord)
 			else:
 				layer_node.erase_cell(pos)
+			if is_instance_valid(flora_lod_layers):
+				flora_lod_layers.paint_cell(layer_key, pos, tile_coord)
+			if is_instance_valid(flora_lod_vector) and _cell_str_nonempty(visual_cell, layer_key):
+				flora_lod_vector.paint_cell(layer_key, pos, p_id)
 		else:
 			layer_node.erase_cell(pos)
+			if is_instance_valid(flora_lod_layers):
+				flora_lod_layers.erase_cell(layer_key, pos)
+			if is_instance_valid(flora_lod_vector):
+				flora_lod_vector.erase_cell(layer_key, pos)
 
 
 func _erase_plant_layers_at(pos: Vector2i, clear_ground: bool) -> void:
@@ -2301,6 +2486,10 @@ func _erase_plant_layers_at(pos: Vector2i, clear_ground: bool) -> void:
 		var layer_node := _get_flora_layer(layer_key)
 		if layer_node:
 			layer_node.erase_cell(pos)
+		if is_instance_valid(flora_lod_layers):
+			flora_lod_layers.erase_cell(layer_key, pos)
+		if is_instance_valid(flora_lod_vector):
+			flora_lod_vector.erase_cell(layer_key, pos)
 
 
 func _get_worker_data(w_id: String) -> Dictionary:
@@ -2385,6 +2574,15 @@ func _get_planned_cell_state(pos: Vector2i, cell: Dictionary) -> Dictionary:
 	return state
 
 
+func _ensure_farm_astar_ready() -> void:
+	var need := Vector2i(_map_w(), _map_h())
+	if need.x <= 0 or need.y <= 0:
+		return
+	if farm_astar.region.size == need:
+		return
+	_init_farm_astar()
+
+
 func _init_farm_astar() -> void:
 	farm_astar.region = Rect2i(0, 0, _map_w(), _map_h())
 	farm_astar.cell_size = Vector2(200, 200)
@@ -2421,6 +2619,9 @@ func _update_astar_cell(pos: Vector2i) -> void:
 
 	if land == "bridge":
 		solid = false
+
+	if not farm_astar.is_in_boundsv(pos):
+		return
 
 	farm_astar.set_point_solid(pos, solid)
 
@@ -2557,7 +2758,7 @@ func _draw_planned_journey_lines(canvas: CanvasItem) -> void:
 		canvas.draw_polyline(preview_pts, Color(live_color.r, live_color.g, live_color.b, 0.6), line_width)
 
 
-func _update_single_tile_visual(pos: Vector2i) -> void:
+func _update_single_cell_visuals(pos: Vector2i) -> void:
 	var x: int = pos.x
 	var y: int = pos.y
 	if x < 0 or x >= _map_w() or y < 0 or y >= _map_h():
@@ -2567,13 +2768,11 @@ func _update_single_tile_visual(pos: Vector2i) -> void:
 	var visual_cell: Dictionary = _get_visual_cell(pos, cell)
 	var l_struct := get_node_or_null("StructureLayer") as TileMapLayer
 	var object_entries: Dictionary = preload("res://data/data_objects.gd").ENTRIES
-	# StructureLayer: draw fixtures only when `structure` is a string id (see grid overload doc above).
 
 	if is_instance_valid(capillary_overlay):
 		capillary_overlay.set_cell_moisture(pos, _capillary_shimmer_moisture(cell))
 
 	var planned_state = _get_planned_cell_state(pos, cell)
-	# Terrain atlas: ground truth only — queued rotovate/water previews draw on `preview_overlay`.
 	var land: String = str(cell.get("land", "wild"))
 
 	if _land_is_infra(land):
@@ -2622,6 +2821,10 @@ func _update_single_tile_visual(pos: Vector2i) -> void:
 			l_struct.erase_cell(pos)
 
 	_update_astar_cell(pos)
+
+
+func _update_single_tile_visual(pos: Vector2i) -> void:
+	_update_single_cell_visuals(pos)
 
 
 func _get_plant_growth_stage(plant_id: String, current_age: float) -> int:
@@ -2711,17 +2914,17 @@ func register_custom_plant_sprite(plant_id: String, png_path: String) -> int:
 	if src == null:
 		return -1
 	var img := Image.load_from_file(png_path)
-	if img == null:
+	if img == null or img.is_empty():
 		return -1
 	const T := 200
 	if img.get_size() != Vector2i(T, T):
 		img.resize(T, T, Image.INTERPOLATE_NEAREST)
 
 	var atlas_tex := src.texture as ImageTexture
-	if atlas_tex == null:
+	if atlas_tex == null or atlas_tex.get_width() == 0:
 		return -1
 	var atlas_img := atlas_tex.get_image()
-	if atlas_img == null:
+	if atlas_img == null or atlas_img.is_empty():
 		return -1
 
 	var ax := _next_custom_atlas_x
@@ -2741,7 +2944,131 @@ func register_custom_plant_sprite(plant_id: String, png_path: String) -> int:
 	return ax
 
 
+func _populate_flora_lod_from_grid() -> void:
+	if not is_instance_valid(flora_lod_layers):
+		return
+	flora_lod_layers.clear_all()
+	if is_instance_valid(flora_lod_vector):
+		flora_lod_vector.clear_all()
+	for x in range(_map_w()):
+		for y in range(_map_h()):
+			var pos := Vector2i(x, y)
+			var cell: Dictionary = FarmDataManager.grid_data[x][y]
+			var visual_cell: Dictionary = _get_visual_cell(pos, cell)
+			for layer_key in ["canopy", "understory", "ground"]:
+				if _cell_str_nonempty(visual_cell, layer_key):
+					var p_id: String = str(visual_cell.get(layer_key, ""))
+					var age_key := "%s_age" % layer_key
+					var plant_age := float(visual_cell.get(age_key, 0.0))
+					var growth_stage := _get_plant_growth_stage(p_id, plant_age)
+					var tile_coord := PlantGrowth.flora_atlas_coord(p_id, growth_stage)
+					flora_lod_layers.paint_cell(layer_key, pos, tile_coord)
+					if is_instance_valid(flora_lod_vector):
+						flora_lod_vector.paint_cell(layer_key, pos, p_id)
+				else:
+					flora_lod_layers.erase_cell(layer_key, pos)
+					if is_instance_valid(flora_lod_vector):
+						flora_lod_vector.erase_cell(layer_key, pos)
+
+
+func _visible_stream_rect(margin: int = 4) -> Rect2i:
+	var cam := main_camera
+	if not is_instance_valid(cam):
+		cam = get_viewport().get_camera_2d()
+	if not is_instance_valid(cam):
+		return Rect2i(0, 0, _map_w(), _map_h())
+	var z := maxf(cam.zoom.x, 0.0001)
+	var half := get_viewport().get_visible_rect().size / z * 0.5
+	var center := cam.global_position
+	var pad := 200.0 * float(margin)
+	var tl := (center - half - Vector2(pad, pad)) / 200.0
+	var br := (center + half + Vector2(pad, pad)) / 200.0
+	var x0 := clampi(int(floor(tl.x)), 0, _map_w() - 1)
+	var y0 := clampi(int(floor(tl.y)), 0, _map_h() - 1)
+	var x1 := clampi(int(ceil(br.x)), 0, _map_w() - 1)
+	var y1 := clampi(int(ceil(br.y)), 0, _map_h() - 1)
+	return Rect2i(x0, y0, maxi(x1 - x0 + 1, 1), maxi(y1 - y0 + 1, 1))
+
+
+func _erase_streamed_tilemap_at(pos: Vector2i) -> void:
+	erase_cell(pos)
+	for layer_key in ["canopy", "understory", "ground"]:
+		var layer_node := _get_flora_layer(layer_key)
+		if layer_node:
+			layer_node.erase_cell(pos)
+		if is_instance_valid(flora_lod_layers):
+			flora_lod_layers.erase_cell(layer_key, pos)
+		if is_instance_valid(flora_lod_vector):
+			flora_lod_vector.erase_cell(layer_key, pos)
+	var l_struct := get_node_or_null("StructureLayer") as TileMapLayer
+	if l_struct:
+		l_struct.erase_cell(pos)
+
+
+## Stream paint: terrain + flora TileMap cells in the camera window.
+## Visibility of flora layers is still owned by zoom culling (sprites when
+## zoomed in, FloraLodLayers low-res atlas tiles when zoomed out).
+func _stream_paint_terrain_only(pos: Vector2i) -> void:
+	var x: int = pos.x
+	var y: int = pos.y
+	if x < 0 or x >= _map_w() or y < 0 or y >= _map_h():
+		return
+	var cell: Dictionary = FarmDataManager.grid_data[x][y]
+	var land: String = str(cell.get("land", "wild"))
+	# Skip planned-state scan when queues are empty (common case) — that scan
+	# was O(queue) per cell and dominated stream hitches.
+	if FarmDataManager.action_queue.is_empty() and FarmDataManager.blueprints.is_empty():
+		set_cell(pos, 0, Vector2i(_land_to_atlas_x(land, pos), 0))
+	else:
+		var planned_state = _get_planned_cell_state(pos, cell)
+		if _should_paint_grey_path_tile(cell, planned_state):
+			set_cell(pos, 0, Vector2i(11, 0))
+		else:
+			set_cell(pos, 0, Vector2i(_land_to_atlas_x(str(planned_state.get("land", land)), pos), 0))
+	# Flora sprites + LOD colours for this cell (cheap atlas lookup).
+	var visual_cell: Dictionary = cell
+	if not FarmDataManager.action_queue.is_empty():
+		visual_cell = _get_visual_cell(pos, cell)
+	_paint_flora_cell(pos, visual_cell)
+
+
+var _stream_rect: Rect2i = Rect2i()
+
+
+## Called by the camera when it pans/zooms on low-end GPUs.
+func stream_map_visuals_if_needed() -> void:
+	if not MetaManager.low_end_gpu:
+		return
+	_stream_map_visuals(false)
+
+
+func _stream_map_visuals(force: bool) -> void:
+	var new_rect := _visible_stream_rect(4)
+	if not force and new_rect == _stream_rect:
+		return
+	if _stream_rect.size != Vector2i.ZERO:
+		for x in range(_stream_rect.position.x, _stream_rect.position.x + _stream_rect.size.x):
+			for y in range(_stream_rect.position.y, _stream_rect.position.y + _stream_rect.size.y):
+				var p := Vector2i(x, y)
+				if new_rect.has_point(p):
+					continue
+				_erase_streamed_tilemap_at(p)
+	for x in range(new_rect.position.x, new_rect.position.x + new_rect.size.x):
+		for y in range(new_rect.position.y, new_rect.position.y + new_rect.size.y):
+			var p2 := Vector2i(x, y)
+			if not force and _stream_rect.has_point(p2):
+				continue
+			_stream_paint_terrain_only(p2)
+	_stream_rect = new_rect
+	if is_instance_valid(main_camera) and main_camera.has_method("_update_zoom_culling"):
+		main_camera._update_zoom_culling()
+	else:
+		_apply_flora_visibility_settings()
+
+
 func update_visuals() -> void:
+	## Full grid pass — use `_update_single_cell_visuals` for local edits.
+	## On low-end GPUs this becomes a camera-window stream (see `_stream_map_visuals`).
 	if active_lens == "energy":
 		if is_instance_valid(overlay):
 			overlay.hide()
@@ -2771,70 +3098,32 @@ func update_visuals() -> void:
 		if active_lens in ["moisture", "nitrogen", "growth"] and is_instance_valid(overlay):
 			overlay.show()
 
-	var l_struct := get_node_or_null("StructureLayer") as TileMapLayer
-
-	var object_entries: Dictionary = preload("res://data/data_objects.gd").ENTRIES
-	# StructureLayer uses `_cell_has_building_structure` below — same overload as single-tile refresh.
-
 	if is_instance_valid(capillary_overlay):
 		capillary_overlay.wet_cells.clear()
+		capillary_overlay.visible = MetaManager.advanced_overlays
+		capillary_overlay.set_process(MetaManager.advanced_overlays)
 
-	for x in range(_map_w()):
-		for y in range(_map_h()):
-			var cell: Dictionary = FarmDataManager.grid_data[x][y]
-			var pos := Vector2i(x, y)
-			var visual_cell: Dictionary = _get_visual_cell(pos, cell)
-
-			if is_instance_valid(capillary_overlay):
-				capillary_overlay.set_cell_moisture(pos, _capillary_shimmer_moisture(cell))
-
-			# Path overlay still uses planned queue/blueprints; land atlas uses grid only (queue hints on preview overlay).
-			var planned_state = _get_planned_cell_state(pos, cell)
-			var land: String = str(cell.get("land", "wild"))
-
-			if _land_is_infra(land):
-				set_cell(pos, 0, Vector2i(_land_to_atlas_x(land, pos), 0))
-				_erase_plant_layers_at(pos, true)
-				if l_struct:
-					if _cell_has_building_structure(cell):
-						var obj_inf: String = str(cell["structure"])
-						if object_entries.has(obj_inf):
-							var ax_inf: int = int(object_entries[obj_inf]["atlas_x"])
-							l_struct.set_cell(pos, 0, Vector2i(ax_inf, 0))
-						else:
-							l_struct.erase_cell(pos)
-					else:
-						l_struct.erase_cell(pos)
-				continue
-
-			if _should_paint_grey_path_tile(cell, planned_state):
-				set_cell(pos, 0, Vector2i(11, 0))
-				_erase_plant_layers_at(pos, false)
-				if l_struct:
-					if _cell_has_building_structure(cell):
-						var obj_fp: String = str(cell["structure"])
-						if object_entries.has(obj_fp):
-							var ax_fp: int = int(object_entries[obj_fp]["atlas_x"])
-							l_struct.set_cell(pos, 0, Vector2i(ax_fp, 0))
-						else:
-							l_struct.erase_cell(pos)
-					else:
-						l_struct.erase_cell(pos)
-				continue
-
-			set_cell(pos, 0, Vector2i(_land_to_atlas_x(land, pos), 0))
-			_paint_flora_cell(pos, visual_cell)
-
-			if l_struct:
-				if _cell_has_building_structure(cell):
-					var obj_id: String = str(cell["structure"])
-					if object_entries.has(obj_id):
-						var atlas_x: int = int(object_entries[obj_id]["atlas_x"])
-						l_struct.set_cell(pos, 0, Vector2i(atlas_x, 0))
-					else:
-						l_struct.erase_cell(pos)
-				else:
-					l_struct.erase_cell(pos)
+	_ensure_farm_astar_ready()
+	MetaManager.ensure_low_end_detected()
+	if MetaManager.low_end_gpu:
+		# Potato mode: stream terrain+flora TileMap cells near the camera.
+		# Zoom culling still swaps flora sprites ↔ LOD rects.
+		clear()
+		for layer_key in ["canopy", "understory", "ground"]:
+			var fl := _get_flora_layer(layer_key)
+			if fl:
+				fl.clear()
+		var l_struct_clear := get_node_or_null("StructureLayer") as TileMapLayer
+		if l_struct_clear:
+			l_struct_clear.clear()
+		_populate_flora_lod_from_grid()
+		_stream_rect = Rect2i()
+		_stream_map_visuals(true)
+		_apply_flora_visibility_settings()
+	else:
+		for x in range(_map_w()):
+			for y in range(_map_h()):
+				_update_single_cell_visuals(Vector2i(x, y))
 
 	# Energy Vision: zone metaballs + maintenance bubble (separate overlay nodes)
 	if is_instance_valid(energy_zone_overlay):
@@ -3234,10 +3523,7 @@ func _try_smart_demolish(map_pos: Vector2i) -> bool:
 	if has_method("spawn_floating_text"):
 		spawn_floating_text("Demolished", Color("9e9e9e"), map_pos, "actions")
 
-	if has_method("_refresh_all_visuals"):
-		_refresh_all_visuals()
-	else:
-		queue_redraw()
+	_refresh_cells_visuals(tiles_to_demolish)
 
 	call_deferred("advance_turn")
 	return true
@@ -3766,6 +4052,9 @@ func _attempt_grid_action(mouse_pos: Vector2) -> void:
 		q_entry["color"] = "81c784"
 	if active_tool == "additive":
 		q_entry["seed"] = active_seed
+	if _terrain_tool_commits_on_queue(active_tool):
+		q_entry["terrain_snapshot"] = _capture_terrain_snapshot(cell)
+		_commit_immediate_terrain_tool(cell, active_tool)
 	FarmDataManager.redo_queue.clear()
 	_on_time_machine_player_edit()
 	FarmDataManager.action_queue.append(q_entry)
@@ -3775,16 +4064,9 @@ func _attempt_grid_action(mouse_pos: Vector2) -> void:
 	if RadioManager.has_method("set_music_state"):
 		RadioManager.set_music_state("Planning")
 
-	# --- INSTANT VISUAL FEEDBACK (NO LAG) ---
-	var preview_land: String = _preview_land_for_cell(cell)
-	if active_tool == "plant" and str(active_seed) != "":
-		preview_land = "cultivated"
-	if active_tool == "build_path":
-		set_cell(Vector2i(x, y), 0, Vector2i(11, 0))
-	elif active_tool != "additive":
-		set_cell(Vector2i(x, y), 0, Vector2i(_land_to_atlas_x(preview_land, Vector2i(x, y)), 0))
-	if active_tool == "rotovate" or active_tool == "e_tiller" or active_tool == "dig_swale":
-		_erase_plant_layers_at(Vector2i(x, y), true)
+	# --- INSTANT VISUAL FEEDBACK (single-cell incremental refresh) ---
+	_update_single_cell_visuals(Vector2i(x, y))
+	_refresh_overlay_redraws()
 	# ----------------------------------------
 
 	if active_tool == "rotovate" or active_tool == "e_tiller":
@@ -3902,13 +4184,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 					print("Toggled Overlay: ", active_lens)
 
-					# Trigger the visual refresh to apply the color modulation
-					if has_method("apply_lens"):
-						call("apply_lens")
-					elif has_method("update_visuals"):
-						call("update_visuals")
-					elif has_method("_refresh_all_visuals"):
-						call("_refresh_all_visuals")
+					# Lens toggles need a full pass (terrain + overlay rebuild).
+					_refresh_all_visuals()
 				elif action_name == "Water":
 					set_current_tool("water_tile")
 				elif action_name == "Rotovator":
@@ -4019,10 +4296,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				is_dragging = false
 				_shift_drag_start = Vector2i(-1, -1)
 				_last_dragged_cell = Vector2i(-1, -1)
-				if has_method("_refresh_all_visuals"):
-					_refresh_all_visuals()
-				elif has_method("update_visuals"):
-					update_visuals()
+				_refresh_overlay_redraws()
 				if has_method("_calculate_maintenance_bubble"):
 					_calculate_maintenance_bubble()
 				if has_method("_refresh_queue_ui"):
@@ -4081,11 +4355,10 @@ func _process(_delta: float) -> void:
 		var active_w = FarmDataManager.get_active_worker()
 		if farmer is Sprite2D:
 			var tex_path = active_w.get("sprite", "res://icon.svg")
-			if ResourceLoader.exists(tex_path):
-				var expected_tex = load(tex_path)
-				if farmer.texture != expected_tex:
-					farmer.texture = expected_tex
-					farmer.modulate = Color.WHITE
+			if str(farmer.get_meta("p4s_sprite_path", "")) != tex_path and ResourceLoader.exists(tex_path):
+				farmer.texture = load(tex_path)
+				farmer.set_meta("p4s_sprite_path", tex_path)
+				farmer.modulate = Color.WHITE
 
 	var skip_tile_hover := false
 	if is_instance_valid(hud_instance) and hud_instance.has_method("is_blocking_ui_open"):
@@ -4366,6 +4639,7 @@ func undo_last_action() -> void:
 						FarmDataManager.blueprints.remove_at(bi)
 
 			_update_astar_cell(removed["pos"])
+			_restore_queued_terrain_snapshot(removed)
 		else:
 			break
 
@@ -4375,7 +4649,7 @@ func undo_last_action() -> void:
 	FarmDataManager.refund_energy(refund_e)
 	FarmDataManager.current_money += refund_m
 
-	_refresh_all_visuals()
+	_refresh_cells_visuals(popped_batch)
 	_sync_hud_status()
 	if has_method("_refresh_queue_ui"):
 		_refresh_queue_ui()
@@ -4405,6 +4679,8 @@ func clear_queued_actions() -> void:
 					and str(FarmDataManager.blueprints[bi].get("structure", "")) == st:
 					FarmDataManager.blueprints.remove_at(bi)
 
+		_restore_queued_terrain_snapshot(removed)
+
 	FarmDataManager.action_queue.clear()
 	FarmDataManager.redo_queue.clear()
 
@@ -4414,9 +4690,7 @@ func clear_queued_actions() -> void:
 	for cell_pos in astar_touched:
 		_update_astar_cell(cell_pos)
 
-	if is_instance_valid(preview_overlay):
-		preview_overlay.queue_redraw()
-	_refresh_all_visuals()
+	_refresh_cells_visuals(astar_touched.keys())
 	_sync_hud_status()
 	if has_method("_refresh_queue_ui"):
 		_refresh_queue_ui()
@@ -4445,6 +4719,7 @@ func redo_action() -> void:
 			})
 
 		FarmDataManager.action_queue.append(act)
+		_reapply_queued_terrain_commit(act)
 		_update_astar_cell(act["pos"])
 
 	FarmDataManager.spend_energy(cost_e)
@@ -4453,7 +4728,7 @@ func redo_action() -> void:
 	if RadioManager.has_method("play_action_note"):
 		RadioManager.play_action_note("build")
 
-	_refresh_all_visuals()
+	_refresh_cells_visuals(batch)
 	_sync_hud_status()
 	if has_method("_refresh_queue_ui"):
 		_refresh_queue_ui()
@@ -6103,23 +6378,22 @@ func process_produce_action(action: String, item_key: String) -> void:
 	if not FarmDataManager.remove_from_inventory(item_key, 1):
 		return
 
-		var e_yield := 3
-		var m_yield := 2
-		if item_key != "wild_greens":
-			var db: Dictionary = preload("res://data/data_plants.gd").get_plant_data(item_key)
-			e_yield = int(db.get("energy_yield", 5))
-			m_yield = int(db.get("yield_val", 5))
+	var e_yield := 3
+	var m_yield := 2
+	if item_key != "wild_greens":
+		var db: Dictionary = preload("res://data/data_plants.gd").get_plant_data(item_key)
+		e_yield = int(db.get("energy_yield", 5))
+		m_yield = int(db.get("yield_val", 5))
 
-		if action == "eat":
-			FarmDataManager.refund_energy(e_yield)
-			_sync_hud_status()
-		elif action == "sell":
-			var charm_mult = 1.2 if MetaManager.has_upgrade("hypnotic_charm") else 1.0
-			FarmDataManager.current_money += int(round(m_yield * charm_mult))
+	if action == "eat":
+		FarmDataManager.refund_energy(e_yield)
+		_sync_hud_status()
+	elif action == "sell":
+		var charm_mult = 1.2 if MetaManager.has_upgrade("hypnotic_charm") else 1.0
+		FarmDataManager.current_money += int(round(m_yield * charm_mult))
 
-		_refresh_all_visuals()
-		if hud_instance and hud_instance.has_method("refresh_produce_ui"):
-			hud_instance.refresh_produce_ui(FarmDataManager.inventory)
+	if hud_instance and hud_instance.has_method("refresh_produce_ui"):
+		hud_instance.refresh_produce_ui(FarmDataManager.inventory)
 
 
 func _tool_energy_cost(action: String) -> int:
@@ -6716,17 +6990,43 @@ func _build_structure_queue_costs(struct_id: String) -> Vector2i:
 
 
 func _on_structure_overlay_draw(canvas: CanvasItem) -> void:
-	for x in range(_map_w()):
-		for y in range(_map_h()):
+	if not MetaManager.advanced_overlays:
+		return
+	# Only paint cells near the camera — a full 128² pass was emitting ~60k
+	# primitives every redraw (river/swale washes) and stalling VMware.
+	var min_x := 0
+	var max_x := _map_w() - 1
+	var min_y := 0
+	var max_y := _map_h() - 1
+	if is_instance_valid(main_camera):
+		var z := maxf(main_camera.zoom.x, 0.0001)
+		var half := get_viewport().get_visible_rect().size / z * 0.5
+		var center := main_camera.global_position
+		var pad := 400.0 # two tiles of margin
+		var tl := (center - half - Vector2(pad, pad)) / 200.0
+		var br := (center + half + Vector2(pad, pad)) / 200.0
+		min_x = clampi(int(floor(tl.x)), 0, _map_w() - 1)
+		max_x = clampi(int(ceil(br.x)), 0, _map_w() - 1)
+		min_y = clampi(int(floor(tl.y)), 0, _map_h() - 1)
+		max_y = clampi(int(ceil(br.y)), 0, _map_h() - 1)
+	for x in range(min_x, max_x + 1):
+		for y in range(min_y, max_y + 1):
 			var cd: Dictionary = FarmDataManager.grid_data[x][y]
 			var st := str(cd.get("structure", ""))
 			var zone := str(cd.get("zone", ""))
-			var land_s := str(cd.get("land", ""))
+			var has_npc := _cell_str_nonempty(cd, "npc")
+			# Only buildings / zones / NPCs — water washes removed (terrain atlas
+			# already shows rivers/swales; they were ~30k primitives on VMware).
+			if not has_npc and st == "" and zone == "":
+				continue
+			# Low-end: skip fence-only cells (property boundary spam).
+			if MetaManager.low_end_gpu and not has_npc and zone == "" and st == "fence":
+				continue
 
 			var center_px = map_to_local(Vector2i(x, y))
 			var rect = Rect2(center_px - Vector2(100, 100), Vector2(200, 200))
 
-			if _cell_str_nonempty(cd, "npc"):
+			if has_npc:
 				var npc_id := str(cd.get("npc", ""))
 				var npc_col := Color(0.75, 0.22, 0.28, 0.82)
 				if npc_id == "sylva_student":
@@ -6735,28 +7035,6 @@ func _on_structure_overlay_draw(canvas: CanvasItem) -> void:
 					npc_col = Color(0.55, 0.18, 0.55, 0.85)
 				canvas.draw_circle(center_px, 44, npc_col)
 				canvas.draw_rect(Rect2(center_px - Vector2(28, 52), Vector2(56, 72)), npc_col.darkened(0.15))
-
-			# --- 0. DRAW WATER & TERRAIN ---
-			# Parentheses required: `or` must not combine `(is_river or land)` with `== "river"` (float/string crash).
-			var is_river_tile: bool = bool(cd.get("is_river", false)) or (land_s == "river")
-			var is_swale_tile: bool = land_s == "swale"
-			var moisture := float(cd.get("moisture", 5.0))
-
-			if is_river_tile:
-				# Deep, flowing river: Blue wash with horizontal cyan current lines
-				canvas.draw_rect(rect, Color(0.12, 0.53, 0.90, 0.25))
-				var rx := 62
-				var ry := 23
-				canvas.draw_line(Vector2(center_px.x - rx, center_px.y - ry), Vector2(center_px.x + rx, center_px.y - ry), Color(0.5, 0.85, 1.0, 0.4), 4)
-				var rx2 := 46
-				var ry2 := 31
-				canvas.draw_line(Vector2(center_px.x - rx2, center_px.y + ry2), Vector2(center_px.x + rx2, center_px.y + ry2), Color(0.5, 0.85, 1.0, 0.4), 4)
-
-			elif is_swale_tile or moisture >= 9.0:
-				# Waterlogged mud / Swales: Dark, heavy wash with stagnant circular puddles
-				canvas.draw_rect(rect, Color(0.24, 0.18, 0.15, 0.4))
-				canvas.draw_circle(center_px - Vector2(31, 31), 18, Color(0.2, 0.4, 0.5, 0.4))
-				canvas.draw_circle(center_px + Vector2(23, 15), 28, Color(0.2, 0.4, 0.5, 0.4))
 
 			if st == "" and zone == "":
 				continue
@@ -6803,7 +7081,8 @@ func _on_structure_overlay_draw(canvas: CanvasItem) -> void:
 				# A wooden grazing trough
 				canvas.draw_rect(Rect2(center_px.x - 46, center_px.y + 62, 93, 15), Color("5d4037"))
 			elif st == "fence":
-				canvas.draw_rect(rect.grow(-7), Color("ffcc80"), false, 6)
+				if MetaManager.advanced_overlays:
+					canvas.draw_rect(rect.grow(-7), Color("ffcc80"), false, 6)
 			elif st == "gate":
 				canvas.draw_rect(rect.grow(-15), Color("8d6e63"), false, 12)
 			elif st == "honesty_box":
@@ -7466,6 +7745,26 @@ class MaintenanceBubbleOverlayNode extends Node2D:
 
 class StructureOverlayNode extends Node2D:
 	var map_ref: Node2D
+	var _last_cam_pos: Vector2 = Vector2(INF, INF)
+	var _last_cam_zoom: float = -1.0
+	var _cooldown: float = 0.0
+
+	func _process(delta: float) -> void:
+		# Viewport-culled draw must refresh when the camera pans/zooms.
+		_cooldown = maxf(_cooldown - delta, 0.0)
+		if map_ref == null or _cooldown > 0.0:
+			return
+		var cam = map_ref.get("main_camera")
+		if not is_instance_valid(cam):
+			return
+		var move_thresh := 90000.0 if MetaManager.low_end_gpu else 2500.0
+		var moved: bool = cam.global_position.distance_squared_to(_last_cam_pos) > move_thresh
+		var zoomed: bool = not is_equal_approx(cam.zoom.x, _last_cam_zoom)
+		if moved or zoomed:
+			_last_cam_pos = cam.global_position
+			_last_cam_zoom = cam.zoom.x
+			_cooldown = 0.35 if MetaManager.low_end_gpu else 0.0
+			queue_redraw()
 
 	func _draw() -> void:
 		if map_ref and map_ref.has_method("_on_structure_overlay_draw"):
@@ -7510,7 +7809,7 @@ func _on_preview_overlay_draw(canvas: CanvasItem) -> void:
 		if qpos.x < 0 or qpos.x >= _map_w() or qpos.y < 0 or qpos.y >= _map_h():
 			continue
 		var tile_rect := Rect2(map_to_local(qpos) - Vector2(100, 100), Vector2(200, 200))
-		if action_type == "rotovate" or action_type == "hoe":
+		if action_type == "rotovate" or action_type == "hoe" or action_type == "e_tiller":
 			canvas.draw_rect(tile_rect, Color(0.365, 0.251, 0.216, 0.6), true)
 		elif action_type == "dig_swale":
 			canvas.draw_rect(tile_rect, Color(0.157, 0.208, 0.576, 0.6), true)
@@ -7848,14 +8147,15 @@ func _set_rain_active(active: bool) -> void:
 		return
 	if is_instance_valid(_rain_particles):
 		_rain_particles.emitting = true
+		_sync_weather_particles()
 		return
 	if not is_instance_valid(main_camera):
 		return
 	var rain := CPUParticles2D.new()
 	rain.name = "RainParticles"
-	rain.amount = 500
+	rain.amount = MetaManager.weather_particles
 	rain.lifetime = 1.6
-	rain.preprocess = 1.6
+	rain.preprocess = 0.8 if MetaManager.weather_particles <= 120 else 1.6
 	rain.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	rain.emission_rect_extents = Vector2(14000, 60)
 	rain.position = Vector2(0, -9000)
@@ -7873,11 +8173,18 @@ func _set_rain_active(active: bool) -> void:
 	_rain_particles = rain
 
 
+func _sync_weather_particles() -> void:
+	if not is_instance_valid(_rain_particles):
+		return
+	_rain_particles.amount = clampi(MetaManager.weather_particles, 20, 800)
+
+
 ## Shimmering translucent water overlay for tiles holding more moisture than normal soil (> 10).
 ## Alpha scales with how far above 10 the moisture sits — full swales glow like open water.
 class CapillaryOverlayNode extends Node2D:
 	var map_ref: Node2D
 	var wet_cells: Dictionary = {} # Vector2i -> moisture (float, > 10)
+	var _redraw_accum: float = 0.0
 
 	func set_cell_moisture(pos: Vector2i, moisture: float) -> void:
 		if moisture > 10.0:
@@ -7886,11 +8193,21 @@ class CapillaryOverlayNode extends Node2D:
 			wet_cells.erase(pos)
 			queue_redraw()
 
-	func _process(_delta: float) -> void:
-		if not wet_cells.is_empty() and map_ref and not map_ref.is_sleeping:
+	func _process(delta: float) -> void:
+		if not MetaManager.advanced_overlays:
+			return
+		if wet_cells.is_empty() or map_ref == null or map_ref.is_sleeping:
+			return
+		# Full redraw every frame was melting VMware; 5 Hz is enough for shimmer.
+		_redraw_accum += delta
+		var interval := 0.2 if MetaManager.low_end_gpu else 0.05
+		if _redraw_accum >= interval:
+			_redraw_accum = 0.0
 			queue_redraw()
 
 	func _draw() -> void:
+		if not MetaManager.advanced_overlays:
+			return
 		if wet_cells.is_empty() or map_ref == null:
 			return
 		var t := Time.get_ticks_msec() / 1000.0
@@ -7914,9 +8231,15 @@ class PreviewOverlayNode extends Node2D:
 
 class TriageOverlayNode extends Node2D:
 	var map_ref: Node2D
+	var _redraw_accum: float = 0.0
 
-	func _process(_delta: float) -> void:
-		if map_ref and not map_ref.is_sleeping and map_ref.triage_cache.size() > 0:
+	func _process(delta: float) -> void:
+		if map_ref == null or map_ref.is_sleeping or map_ref.triage_cache.size() == 0:
+			return
+		_redraw_accum += delta
+		var interval := 0.25 if MetaManager.low_end_gpu else 0.05
+		if _redraw_accum >= interval:
+			_redraw_accum = 0.0
 			queue_redraw()
 
 	func _draw() -> void:

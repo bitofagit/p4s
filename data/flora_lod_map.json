@@ -1,0 +1,25 @@
+{
+	"baked_at": "2026-07-14T10:00:32",
+	"columns": 14,
+	"full_zoom_min": 0.38,
+	"rows": 15,
+	"source_atlas": "res://assets/base/sprites/atlas/flora_atlas.png",
+	"tiers": [
+		{
+			"atlas_path": "res://assets/base/sprites/atlas/lod/flora_atlas_lod_mid.png",
+			"id": "mid",
+			"inner_scale": 0.5,
+			"zoom_max": 0.38,
+			"zoom_min": 0.2
+		},
+		{
+			"atlas_path": "res://assets/base/sprites/atlas/lod/flora_atlas_lod_far.png",
+			"id": "far",
+			"inner_scale": 0.25,
+			"zoom_max": 0.2,
+			"zoom_min": 0.0
+		}
+	],
+	"tile_size": 200,
+	"version": 1
+}

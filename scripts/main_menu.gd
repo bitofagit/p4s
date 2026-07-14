@@ -182,6 +182,8 @@ func _ready() -> void:
 		_mute_btn.disabled = true
 	add_child(_mute_btn)
 
+	GodotDocsLog.log_milestone("main_menu_ready")
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _mute_btn == null or _mute_btn.disabled:

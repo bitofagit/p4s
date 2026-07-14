@@ -6,6 +6,14 @@ extends Node
 
 const RADIO_USER_DIR := "user://audio/radio/"
 
+## Peak target for procedural drum one-shots in the Idle playlist (~-12 dBFS).
+const BEAT_TARGET_PEAK_DB := -12.0
+const BEAT_BUS_VOLUME_DB := -6.0
+const SFX_POOL_VOLUME_DB := -12.0
+const SFX_PLAY_VOLUME_MIN_DB := -12.0
+const SFX_PLAY_VOLUME_MAX_DB := -6.0
+const MUSIC_PLAYER_VOLUME_DB := -6.0
+
 # --- Custom radio (user://audio/radio/<station>/*.mp3|ogg) ---
 var custom_stations: Dictionary = {} # folder name -> Array of file paths
 var current_station_name: String = ""
@@ -46,10 +54,12 @@ var base_sample: AudioStream = preload("res://assets/base/audio/sfx/chimes/glock
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_ensure_audio_buses()
 
 	# Setup the Interactive Music Player
 	music_player = AudioStreamPlayer.new()
-	music_player.bus = "Music"
+	music_player.bus = "Drums"
+	music_player.volume_db = MUSIC_PLAYER_VOLUME_DB
 	if interactive_music:
 		music_player.stream = interactive_music
 	add_child(music_player)
@@ -70,6 +80,7 @@ func _ready() -> void:
 					if clean_name.ends_with(".wav") or clean_name.ends_with(".ogg"):
 						var stream_loaded = load("res://assets/base/audio/beats/" + clean_name) as AudioStream
 						if stream_loaded and stream_loaded not in collected:
+							stream_loaded = _normalize_beat_stream(stream_loaded)
 							stream_loaded.set("bpm", 75.0)
 							stream_loaded.set("beat_count", 16)
 							# CRITICAL: We do NOT set native loop_mode here.
@@ -91,6 +102,8 @@ func _ready() -> void:
 			else:
 				var stream = interactive_music.get_clip_stream(i)
 				if stream:
+					stream = _normalize_beat_stream(stream)
+					interactive_music.set_clip_stream(i, stream)
 					stream.set("bpm", 75.0)
 					stream.set("beat_count", 16)
 
@@ -103,24 +116,11 @@ func _ready() -> void:
 	for i in range(pool_size):
 		var p = AudioStreamPlayer.new()
 		p.bus = "SFX"
-		p.volume_db = -12.0 # Significantly softer default volume
+		p.volume_db = SFX_POOL_VOLUME_DB
 		add_child(p)
 		audio_players.append(p)
 
-	# Ensure the SFX bus has a dreamy Reverb
-	var sfx_idx = AudioServer.get_bus_index("SFX")
-	if sfx_idx != -1:
-		var has_reverb = false
-		for i in range(AudioServer.get_bus_effect_count(sfx_idx)):
-			if AudioServer.get_bus_effect(sfx_idx, i) is AudioEffectReverb:
-				has_reverb = true
-
-		if not has_reverb:
-			var rev = AudioEffectReverb.new()
-			rev.room_size = 0.6
-			rev.damping = 0.5
-			rev.wet = 0.4
-			AudioServer.add_bus_effect(sfx_idx, rev)
+	_ensure_bus_reverb("SFX")
 
 	# Fallback (reserved for bus layout sync with interactive music)
 	AudioServer.bus_layout_changed.connect(_on_audio_server_update)
@@ -266,7 +266,85 @@ func refresh_custom_stations() -> void:
 
 
 func _on_audio_server_update() -> void:
-	pass
+	_ensure_audio_buses()
+
+
+func _ensure_audio_buses() -> void:
+	_ensure_bus_chain("SFX", "Master")
+	_ensure_bus_chain("Music", "Master")
+	_ensure_bus_chain("Drums", "Master")
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Drums"), BEAT_BUS_VOLUME_DB)
+	for bus_name in ["SFX", "Music", "Drums"]:
+		_ensure_bus_limiter(bus_name)
+
+
+func _ensure_bus_chain(bus_name: String, send_to: String) -> void:
+	var idx := AudioServer.get_bus_index(bus_name)
+	if idx == -1:
+		AudioServer.add_bus(-1)
+		idx = AudioServer.get_bus_count() - 1
+		AudioServer.set_bus_name(idx, bus_name)
+	if AudioServer.get_bus_send(idx) != send_to:
+		AudioServer.set_bus_send(idx, send_to)
+
+
+func _ensure_bus_limiter(bus_name: String) -> void:
+	var idx := AudioServer.get_bus_index(bus_name)
+	if idx == -1:
+		return
+	for i in range(AudioServer.get_bus_effect_count(idx)):
+		if AudioServer.get_bus_effect(idx, i) is AudioEffectLimiter:
+			return
+	var lim := AudioEffectLimiter.new()
+	lim.threshold_db = -8.0
+	lim.ceiling_db = -0.5
+	lim.soft_clip_db = 2.0
+	AudioServer.add_bus_effect(idx, lim)
+
+
+func _ensure_bus_reverb(bus_name: String) -> void:
+	var idx := AudioServer.get_bus_index(bus_name)
+	if idx == -1:
+		return
+	for i in range(AudioServer.get_bus_effect_count(idx)):
+		if AudioServer.get_bus_effect(idx, i) is AudioEffectReverb:
+			return
+	var rev := AudioEffectReverb.new()
+	rev.room_size = 0.6
+	rev.damping = 0.5
+	rev.wet = 0.4
+	AudioServer.add_bus_effect(idx, rev)
+
+
+func _clamp_volume_db(volume_db: float, min_db: float, max_db: float) -> float:
+	return clampf(volume_db, min_db, max_db)
+
+
+func _normalize_beat_stream(stream: AudioStream) -> AudioStream:
+	if stream is AudioStreamWAV:
+		var wav := stream.duplicate() as AudioStreamWAV
+		var data := wav.data
+		if data.is_empty() or wav.format != AudioStreamWAV.FORMAT_16_BITS:
+			return stream
+		var peak := 0
+		for offset in range(0, data.size() - 1, 2):
+			var sample := data.decode_s16(offset)
+			peak = maxi(peak, absi(sample))
+		if peak <= 0:
+			return wav
+		var target_peak := int(32768.0 * pow(10.0, BEAT_TARGET_PEAK_DB / 20.0))
+		target_peak = maxi(target_peak, 1)
+		if peak <= target_peak:
+			return wav
+		var gain := float(target_peak) / float(peak)
+		var normalized := PackedByteArray()
+		normalized.resize(data.size())
+		for offset in range(0, data.size() - 1, 2):
+			var scaled := int(round(float(data.decode_s16(offset)) * gain))
+			normalized.encode_s16(offset, clampi(scaled, -32768, 32767))
+		wav.data = normalized
+		return wav
+	return stream
 
 
 func set_music_state(clip_name: String) -> void:
@@ -326,8 +404,11 @@ func play_action_note(action_type: String = "") -> void:
 		if not p.playing:
 			p.stream = base_sample
 			p.pitch_scale = pitch
-			# Give it a slightly harder velocity than the ambient echoes
-			p.volume_db = randf_range(-10.0, -6.0)
+			p.volume_db = _clamp_volume_db(
+				randf_range(SFX_PLAY_VOLUME_MIN_DB, SFX_PLAY_VOLUME_MAX_DB),
+				SFX_PLAY_VOLUME_MIN_DB,
+				SFX_PLAY_VOLUME_MAX_DB,
+			)
 			p.play()
 			break
 

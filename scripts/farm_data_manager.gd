@@ -882,11 +882,10 @@ func format_plant_death_log(cell: Dictionary, max_entries: int = 3) -> String:
 		if stage_idx < 0:
 			stage_idx = PlantGrowth.growth_stage(pid, float(entry.get("peak_age", 0.0)))
 		var stage_num := clampi(stage_idx, 0, 5) + 1
-		lines.append(
+		lines.append((
 			"  • [color=#ef9a9a]%s[/color]%s — %s\n"
 			+ "    [color=#b0bec5]Lived %s · reached stage %d · cause of death: %s[/color]"
-			% [pname, layer_part, ago_txt, lifespan_txt, stage_num, reason]
-		)
+		) % [pname, layer_part, ago_txt, lifespan_txt, stage_num, reason])
 	var header := "[b][color=#e57373]☠ Plant history[/color][/b]\n"
 	if log.size() > show_count:
 		header = (

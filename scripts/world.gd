@@ -30,10 +30,27 @@ var keyboard_pan_speed: float = 500.0
 var keyboard_zoom_speed: float = 1.5
 
 const ZOOM_SMOOTH_SPEED := 7.0
+const _DEFAULT_MIN_ZOOM := 0.02
 
 var target_zoom: float = 0.1
-var min_zoom: float = 0.02
+var min_zoom: float = _DEFAULT_MIN_ZOOM
 var max_zoom: float = 1.5
+
+const _FloraLodLayersScript := preload("res://scripts/flora_lod_layers.gd")
+const _FloraLodVectorScript := preload("res://scripts/flora_lod_vector.gd")
+
+## Dynamic zoom culling: above full_zoom_min use the full atlas; below that swap
+## to baked low-res flora_atlas_lod_mid / _far TileMapLayers (see flora_lod_map.json).
+var _cull_ground_layer: TileMapLayer
+var _cull_understory_layer: TileMapLayer
+var _cull_canopy_layer: TileMapLayer
+var _cull_lod_layers: _FloraLodLayersScript
+var _cull_vector_lod: _FloraLodVectorScript
+var _cull_layers_resolved: bool = false
+var _stream_map_ref: Node
+var _last_stream_cam_pos: Vector2 = Vector2(INF, INF)
+var _last_stream_zoom: float = -1.0
+var _stream_cooldown: float = 0.0
 
 ## Aim point from input (may be outside bounds; we only apply clamped position to the camera).
 var desired_pos: Vector2
@@ -51,12 +68,32 @@ var _shake_time_left: float = 0.0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_apply_map_bounds_from_farm()
+	# low_end may not be detected yet at Camera _ready — also re-check deferred.
+	_apply_low_end_camera_limits()
+	call_deferred("_apply_low_end_camera_limits")
 	target_zoom = zoom.x
 	default_zoom = zoom
 	var centre := Vector2(map_bounds_width / 2.0, map_bounds_height / 2.0)
 	global_position = centre
 	desired_pos = centre
 	make_current()
+
+
+func _apply_low_end_camera_limits() -> void:
+	MetaManager.ensure_low_end_detected()
+	if MetaManager.low_end_gpu:
+		# Don't let the player zoom out to the whole farm on weak / virtual GPUs.
+		min_zoom = 0.4
+		if target_zoom < min_zoom:
+			target_zoom = min_zoom
+			zoom = Vector2(min_zoom, min_zoom)
+	else:
+		min_zoom = _DEFAULT_MIN_ZOOM
+
+
+## Live refresh when graphics preset / toggles change in the pause or main menu.
+func apply_meta_graphics_settings() -> void:
+	_apply_low_end_camera_limits()
 
 
 func _apply_map_bounds_from_farm() -> void:
@@ -165,8 +202,88 @@ func _apply_zoom_reanchor(old_zoom: float) -> void:
 	desired_pos = desired_pos + (mouse_pos - desired_pos) * (1.0 - 1.0 / zoom_ratio)
 
 
+func _resolve_cull_layers() -> void:
+	if _cull_layers_resolved:
+		return
+	var map := get_tree().get_first_node_in_group("map") as Node
+	if map == null:
+		return
+	_stream_map_ref = map
+	_cull_ground_layer = map.get("ground_layer") as TileMapLayer
+	_cull_understory_layer = map.get("understory_layer") as TileMapLayer
+	_cull_canopy_layer = map.get("canopy_layer") as TileMapLayer
+	_cull_lod_layers = map.get("flora_lod_layers") as _FloraLodLayersScript
+	_cull_vector_lod = map.get("flora_lod_vector") as _FloraLodVectorScript
+	if is_instance_valid(_cull_ground_layer) or is_instance_valid(_cull_understory_layer) \
+		or is_instance_valid(_cull_canopy_layer):
+		_cull_layers_resolved = true
+
+
+func _update_zoom_culling() -> void:
+	_resolve_cull_layers()
+	if not _cull_layers_resolved:
+		return
+	var culling: bool = MetaManager.dynamic_zoom_culling
+	var use_lod: bool = culling and is_instance_valid(_cull_lod_layers) and _cull_lod_layers.has_tiers()
+	var lod_tier := ""
+	if use_lod:
+		lod_tier = PlantGrowth.flora_lod_tier_for_zoom(zoom.x)
+		use_lod = lod_tier != ""
+	var show_full: bool = not use_lod
+	if is_instance_valid(_cull_ground_layer):
+		var want_ground: bool = MetaManager.render_groundcover and show_full
+		if _cull_ground_layer.visible != want_ground:
+			_cull_ground_layer.visible = want_ground
+	if is_instance_valid(_cull_understory_layer):
+		var want_understory: bool = MetaManager.render_understory and show_full
+		if _cull_understory_layer.visible != want_understory:
+			_cull_understory_layer.visible = want_understory
+	if is_instance_valid(_cull_canopy_layer):
+		var want_canopy: bool = show_full
+		if _cull_canopy_layer.visible != want_canopy:
+			_cull_canopy_layer.visible = want_canopy
+	if is_instance_valid(_cull_lod_layers):
+		_cull_lod_layers.apply_layer_settings(
+			MetaManager.render_groundcover,
+			MetaManager.render_understory,
+		)
+		var atlas_tier := lod_tier
+		if atlas_tier == "far" and MetaManager.flora_vector_far_zoom:
+			atlas_tier = ""
+		_cull_lod_layers.set_lod_tier(atlas_tier if use_lod else "")
+	if is_instance_valid(_cull_vector_lod):
+		var want_vector := use_lod and lod_tier == "far" and MetaManager.flora_vector_far_zoom
+		_cull_vector_lod.apply_layer_settings(
+			MetaManager.render_groundcover,
+			MetaManager.render_understory,
+		)
+		_cull_vector_lod.set_active(want_vector)
+
+
+func _maybe_stream_map_visuals() -> void:
+	if _stream_map_ref == null or not is_instance_valid(_stream_map_ref):
+		_resolve_cull_layers()
+	if _stream_map_ref == null or not _stream_map_ref.has_method("stream_map_visuals_if_needed"):
+		return
+	if not MetaManager.low_end_gpu:
+		return
+	if _stream_cooldown > 0.0:
+		return
+	if (
+		global_position.distance_squared_to(_last_stream_cam_pos) > 400000.0
+		or not is_equal_approx(zoom.x, _last_stream_zoom)
+	):
+		_last_stream_cam_pos = global_position
+		_last_stream_zoom = zoom.x
+		_stream_cooldown = 0.45
+		_stream_map_ref.call("stream_map_visuals_if_needed")
+
+
 func _process(delta: float) -> void:
 	_process_screen_shake(delta)
+	_stream_cooldown = maxf(_stream_cooldown - delta, 0.0)
+	_maybe_stream_map_visuals()
+	_update_zoom_culling()
 	if is_playing_events:
 		return
 

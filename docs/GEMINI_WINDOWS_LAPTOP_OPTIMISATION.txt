@@ -1,0 +1,192 @@
+================================================================================
+P4S — WINDOWS LAPTOP OPTIMISATION (Gemini brainstorm brief)
+================================================================================
+Generated: 2026-07-10
+Project folder: p4s 10.7.26 lets make a windows exe
+Game: Permaculture 4 Squares (opencore) — Godot 4.6.x, 2D tile farm sim
+
+PURPOSE
+-------
+Paste this into Gemini (with docs/GEMINI_GAME_DESIGN_BRIEF.txt and/or
+docs/ARCHITECTURE.txt if useful) and brainstorm a practical plan to get the
+Windows .exe playable on a ~10-year-old Intel i5 laptop with integrated graphics
+(HD 520 / HD 620 / UHD 620 class — no discrete GPU).
+
+This is NOT a request to invent new gameplay. Prefer engineering + settings
+levers that preserve the existing permaculture sim feel.
+
+
+================================================================================
+1. TARGET HARDWARE (floor)
+================================================================================
+
+Assume something like:
+  - CPU: Intel Core i5 (Haswell–Skylake era, ~2014–2016), dual/quad core
+  - GPU: Intel HD / UHD integrated (shared system RAM)
+  - RAM: 8 GB (4–6 GB free for the game after Windows)
+  - Display: 1366×768 or 1920×1080 laptop panel
+  - Storage: HDD or slow SATA SSD (cold start matters)
+  - OS: Windows 10/11
+
+Success criteria (draft — refine with Gemini):
+  - Main menu interactive within ~5–8 s of double-click
+  - Farm map playable (pan/zoom/tool queue) at ≥25–30 FPS average on 1080p
+  - Sleep / overnight sim completes without multi-minute freezes
+  - No multi-minute hitch on first enter of world.tscn
+  - Acceptable quality: nearest-neighbour tiles OK; fancy overlays optional
+
+
+================================================================================
+2. CURRENT ENGINE / PROJECT FACTS (ground truth)
+================================================================================
+
+From project.godot / architecture (as of 2026-07-10):
+
+  Renderer feature set: "Forward Plus" (Godot 4 default for 3D-capable projects)
+  Windows rendering driver: d3d12
+  Physics: Jolt Physics enabled (3D engine setting — game is primarily 2D)
+  Default window: 2560×1600, window mode=4 (fullscreen-ish), canvas_items stretch
+  Debug: always_track_call_stacks=true (editor/debug cost; check export impact)
+
+World stack:
+  - starting_map.gd on a large TileMapLayer (terrain)
+  - Separate flora TileMapLayers: Ground / Understory / Canopy
+  - Flora uses a PRE-BAKED atlas (flora_atlas.png + flora_atlas_map.json)
+    — runtime dynamic atlas stitching was removed (good for boot)
+  - Default / creative maps often 100–128 cells per side → up to ~16k cells
+  - update_visuals() can still walk the full grid; incremental cell updates exist
+    for local tool edits
+  - Multiple Node2D overlays (energy, data view, capillary, guild, preview, etc.)
+  - HUD is a large Control tree instantiated under the map
+
+Export / diagnostics:
+  - Windows Desktop export with embedded .pck
+  - GodotDocsLog writes session logs beside the .exe in P4S_logs/
+    (open/close system info + milestones: autoloads_ready, main_menu_ready,
+    farm_map_ready). Use these to measure Windows slowness before guessing.
+
+
+================================================================================
+3. KNOWN / SUSPECTED COST CENTRES
+================================================================================
+
+Ask Gemini to rank and propose experiments for each:
+
+A. PIXEL FILL / RESOLUTION
+   Shipping at 2560×1600 (or native 4K) on iGPU is brutal. Stretch mode helps UI
+   but still paints a huge framebuffer. Low-end path should default to 1280×720
+   or 1600×900 windowed, with an explicit "Performance" display preset.
+
+B. RENDERER / DRIVER
+   Forward Plus + D3D12 may be heavier than needed for a 2D TileMap game.
+   Brainstorm: Compatibility renderer? OpenGL / D3D11 fallback? Feature tags for
+   a "low" export preset? Trade-offs for shaders/particles.
+
+C. MAP SIZE × FULL-GRID PASSES
+   128×128 × multiple layers × A* sync × overlay redraws.
+   Ideas: smaller default creative maps; chunked/dirty-rect visuals; never call
+   full update_visuals except load/wake/lens; defer overnight work across frames.
+
+D. OVERLAYS & LENSES
+   Data/energy/guild overlays that queue_redraw every frame or rebuild textures.
+   Capillary shimmer, rain particles, screen shake — cheap alone, costly together
+   on iGPU. Suggest "Lite visuals" toggle that disables non-essential overlays.
+
+E. TEXTURE MEMORY
+   Large flora atlas (200px cells), terrain atlas, UI. Integrated GPU shares RAM —
+   thrashing looks like "slowness". Atlas size caps, compressed formats, mipmaps
+   policy (nearest, often no mips for pixel art).
+
+F. CPU / GDSCRIPT HOT PATHS
+   starting_map.gd is large; sleep/overnight plant stress, pathfinding, action
+   queue. Profile with Godot debugger on a mid machine, then validate on Windows
+   logs. Avoid O(n²) neighbour scans without early outs.
+
+G. AUDIO
+   RadioManager / interactive music / many WAV streams. Decode + mix cost on weak
+   CPUs; offer mute-by-default or "music off" for low preset.
+
+H. COLD START
+   Autoload CSV/plant data, scene tree build, first shader compile / PSO on D3D12.
+   First-run hitch vs second run. Milestone timings in P4S_logs are the truth.
+
+
+================================================================================
+4. DESIGN CONSTRAINTS (do not casually break)
+================================================================================
+
+  - Turn-based weekly cycle + Energy + action queue must remain
+  - Three plant layers (canopy / understory / ground) are core fantasy
+  - 200×200 tile art parity preferred (scaling down atlas is a last resort)
+  - Opencore: no dependency on stripped campaign/ghost content
+  - Prefer settings / quality tiers over permanently gutting the high-end look
+
+
+================================================================================
+5. QUESTIONS FOR GEMINI
+================================================================================
+
+1. For a Godot 4.6 *2D* farm game targeting Intel HD 520-class iGPUs, what is the
+   recommended renderer + Windows driver stack in 2026, and why?
+
+2. Propose a 3-tier graphics preset (Low / Medium / High) mapped to concrete
+   project settings and runtime toggles (resolution, VSync, overlays, particles,
+   map size caps, max zoom-out).
+
+3. What is the cheapest way to keep 3 flora layers visually without 3× the fill
+   rate cost (merge layers? Y-sort single layer? bake more into terrain)?
+
+4. Overnight / sleep simulation: strategies to keep the UI responsive (time-slice,
+   progress bar, reduce per-cell work, spatial hashing).
+
+5. Export strategy: one .exe with runtime detection vs separate "P4S Low-End"
+   export preset? Pros/cons for itch.io / Steam-style distribution.
+
+6. Given P4S_logs milestones (autoloads_ready / main_menu_ready / farm_map_ready),
+   what thresholds should fail a Low preset acceptance test?
+
+7. List a 2-week engineering backlog ordered by expected FPS / boot-time ROI
+   for this specific codebase shape (TileMap + overlays + large GDScript map).
+
+
+================================================================================
+6. OUTPUT FORMAT PLEASE (Gemini)
+================================================================================
+
+Reply with:
+  A. Executive summary (10 lines max)
+  B. Tiered preset table (setting → Low/Med/High)
+  C. Top 10 experiments ranked by ROI, each with: hypothesis, how to measure,
+     risk to art/feel, estimate (S/M/L)
+  D. What NOT to do yet (premature micro-opts)
+  E. Open questions that need a real Windows log from a slow machine
+
+
+================================================================================
+7. RELATED REPO DOCS
+================================================================================
+
+  docs/GEMINI_GAME_DESIGN_BRIEF.txt
+  docs/ARCHITECTURE.txt
+  docs/SPRITE_RENDERING_AND_PERFORMANCE.txt
+  docs/GEMINI_NANOALPHA_SPRITE_PIPELINE.txt
+  docs/CODEBASE_GUIDE.md
+  scripts/godot_docs_log.gd          — Windows P4S_logs session files
+  project.godot                      — renderer / display / physics
+  export_presets.cfg                 — Windows Desktop
+
+Obsidian vault (design, not loaded by Godot):
+  obsidian/  and  obsidian/P4S Obsidian Opencor/
+
+
+================================================================================
+8. SHORT HUMAN NOTES (Cursor / designer)
+================================================================================
+
+We already fixed a ~40k AStarGrid2D error flood (was tanking editor debugger).
+Flora atlas is pre-baked. Remaining Windows pain is likely resolution + renderer
++ full-grid work + iGPU fill rate — not "missing sprites".
+
+Next practical step after this brainstorm: re-export Windows exe, run on the
+target laptop, send P4S_logs/latest_session.txt + godot_error_log_*.txt so
+milestone timings drive the backlog instead of vibes.

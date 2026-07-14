@@ -1,0 +1,165 @@
+================================================================================
+P4S OPENCORE — RECENT ENGINEERING CHANGES (for Gemini)
+================================================================================
+Generated: 2026-07-14
+Purpose: Brief another AI on what changed in the last few dev sessions (Jul 10–14).
+For full history see docs/cursor-action-log.txt (append-only, newest at bottom).
+
+Paste this at the start of a Gemini chat when you need context on performance,
+Windows export, or flora rendering — without re-reading the whole codebase.
+
+
+================================================================================
+1. TL;DR (current state)
+================================================================================
+
+- Godot 4.6, GL Compatibility renderer, 60 fps cap, 30 ms audio latency.
+- Flora uses a pre-baked 14×15 grid atlas (flora_atlas.png) on three TileMapLayers:
+  Canopy (z=1), Understory (z=2), Ground (z=3). Y-sort is OFF on all flora layers
+  (y-sort was ~1 canvas item per planted cell → thousands of draws on VMware).
+- When zoomed out, full-res flora layers hide and **low-res LOD atlas TileMaps** show
+  instead (NOT coloured rectangles anymore — old FloraLodOverlay was removed Jul 14).
+- VMware / virtual GPU / old iGPU builds auto-enable "potato mode" via
+  MetaManager.low_end_gpu (terrain streaming, fewer particles, zoom limits, etc.).
+- Windows exe export was fixed: raw CSV/JSON now pack correctly (seed inventory was
+  empty before because Godot imported CSVs as translations instead of shipping them).
+- Console diagnostics: [P4S sysinfo], [P4S perf] (every 5 s), [P4S spike] (>120 ms).
+
+
+================================================================================
+2. FLORA LOD ATLAS (Jul 14 — latest)
+================================================================================
+
+PROBLEM
+  Sprites disappeared when zoomed out (Mac editor + VMware). Earlier fix used flat
+  coloured rectangles (FloraLodOverlay) — user wanted actual low-res plant sprites.
+
+SOLUTION
+  Offline baker downscales the full flora atlas into two PNG tiers in:
+    assets/base/sprites/atlas/lod/
+      flora_atlas_lod_mid.png   — 50% sprite centred in each 200 px cell
+      flora_atlas_lod_far.png   — 25% sprite centred in each 200 px cell
+  Zoom thresholds in data/flora_lod_map.json:
+    Full atlas:  zoom >= 0.38
+    Mid LOD:     0.20 <= zoom < 0.38   (default farm zoom ~0.25 → mid LOD)
+    Far LOD:     zoom < 0.20
+
+RUNTIME
+  FloraLodLayers (scripts/flora_lod_layers.gd) — Node2D with mid/far TileMapLayers
+  per flora layer (canopy / understory / ground). Same grid coords as full atlas.
+  world.gd _update_zoom_culling() toggles full layers vs LOD tier via
+  PlantGrowth.flora_lod_tier_for_zoom(zoom).
+  starting_map.gd paints LOD cells in the same path as full flora (_paint_flora_cell).
+
+BAKE COMMANDS
+  # After flora_atlas.png exists (run bake_flora_atlas.gd first if needed):
+  godot --headless --path . --script res://scripts/tools/run_flora_lod_bake.gd
+  godot --headless --path . --import
+
+  Editor alternative: File → Run on scripts/tools/bake_flora_lod_atlas.gd
+
+KEY FILES
+  scripts/tools/flora_lod_atlas_baker.gd   — baker logic
+  scripts/tools/run_flora_lod_bake.gd      — headless CLI wrapper
+  scripts/flora_lod_layers.gd              — runtime LOD TileMapLayers
+  scripts/plant_growth.gd                  — flora_lod_meta(), flora_lod_tier_for_zoom()
+  data/flora_lod_map.json                    — tier paths + zoom thresholds
+  DELETED: scripts/flora_lod_overlay.gd     — old coloured-rect stand-in
+
+
+================================================================================
+3. VMWARE / LOW-END GPU PERF (Jul 10)
+================================================================================
+
+MetaManager.low_end_gpu auto-detects VMware SVGA, virtual GPUs, and (on p4s-5 build)
+old Intel HD / early UHD / AMD APU names.
+
+When low_end_gpu is true:
+  - Terrain TileMap streaming: only paint cells near camera (not full 10k map)
+  - Flora y-sort disabled; rendering_quadrant_size = 32
+  - Rain particles reduced (500 → 80)
+  - Structure overlay viewport-culled; river/swale washes skipped on low-end
+  - Capillary/triage redraws throttled; fence overlay skipped
+  - Camera start zoom / min zoom raised so player can't zoom out to whole farm
+  - dynamic_zoom_culling swaps full flora ↔ LOD tiers (never "nothing")
+
+Graphics Settings panel (ui_graphics_panel.gd) — user toggles:
+  - render_groundcover (default OFF)
+  - render_understory (default ON)
+  - dynamic_zoom_culling (default ON)
+
+Perf logging example:
+  [P4S perf] fps=55 avg=18ms draws=400 objs=900 ...
+  [P4S spike] frame=133ms (process=0ms ...) when hitches occur
+
+
+================================================================================
+4. WINDOWS EXPORT FIX (Jul 10)
+================================================================================
+
+PROBLEM: Exported .exe had empty seed inventory — plants_v3.csv never shipped.
+
+FIX:
+  - All data/*.csv.import stubs set to importer="keep" (raw CSV in PCK)
+  - export_presets.cfg include_filter: data/*.csv, data/*.json, data/almanac/*.md
+  - Verified: 33 plants load from exported pack
+
+EXPORT PRESETS (export_presets.cfg):
+  - Windows Desktop → ../P4Sopencore4.exe (x86_64)
+  - Windows Desktop ARM64 (VM / Surface) → ../exes/P4SopencoreARM64.exe
+  - Windows Desktop p4s-5 (low-end iGPU) → ../exes/p4s-5.exe
+    custom_features=p4s_low_end forces potato mode on any GPU
+
+
+================================================================================
+5. FLORA ATLAS / LAYER STACK (context for design chats)
+================================================================================
+
+Pre-baked atlas replaces runtime PNG stitching (removed for perf).
+Baker: scripts/tools/flora_atlas_baker.gd → flora_atlas.png + data/flora_atlas_map.json
+
+Layer offsets (world pixels):
+  canopy:     (-25, -35)
+  understory: (0, 0)  [check starting_map.gd FLORA_LAYER_OFFSETS]
+  ground:     per FLORA_LAYER_OFFSETS
+
+Growth stages 0–5 map to atlas grid coords via flora_atlas_map.json tiles[plant_id][stage].
+
+PlantGrowth (class_name) is the static API for atlas coords, LOD meta, growth stages.
+
+
+================================================================================
+6. WHAT GEMINI SHOULD NOT ASSUME
+================================================================================
+
+- FloraLodOverlay (coloured rects) is GONE — do not reference it in new designs.
+- Premium ghost-story campaign content is gitignored; this is opencore only.
+- Re-export exes after asset/bake changes; Mac editor test ≠ Windows VM test.
+- LOD PNGs need Godot import (.import stubs) before ResourceLoader.exists() returns true.
+- Default farm zoom ~0.25 intentionally shows MID LOD, not full-res sprites.
+
+
+================================================================================
+7. SUGGESTED FOLLOW-UPS (not yet done unless noted)
+================================================================================
+
+- Re-export ARM64 + p4s-5 exes after LOD bake (user may want fresh builds).
+- Playtest Mac + VMware: zoom in/out through all three flora tiers.
+- If flora_atlas.png changes, re-run BOTH bakers (full atlas, then LOD).
+- Consider mipmaps or single far tier only if far LOD still too heavy on VMware.
+
+
+================================================================================
+8. CROSS-REFERENCES
+================================================================================
+
+  docs/ARCHITECTURE.txt              — stack + revision log (Jul 14 LOD entry)
+  docs/cursor-action-log.txt         — line-by-line change log
+  docs/GEMINI_GAME_DESIGN_BRIEF.txt  — full game design onboarding
+  docs/GEMINI_WINDOWS_LAPTOP_OPTIMISATION.txt — low-end Windows target brief
+  docs/SPRITE_RENDERING_AND_PERFORMANCE.txt   — atlas / slowdown notes
+  docs/CODEBASE_GUIDE.md             — file locations
+
+================================================================================
+END
+================================================================================

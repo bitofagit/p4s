@@ -79,6 +79,82 @@ static func flora_atlas_meta() -> Dictionary:
 	return _atlas_map
 
 
+const FLORA_LOD_MAP_PATH := "res://data/flora_lod_map.json"
+static var _lod_map: Dictionary = {}
+static var _lod_map_loaded := false
+
+
+static func flora_lod_meta() -> Dictionary:
+	_ensure_lod_map()
+	return _lod_map
+
+
+static func flora_full_zoom_min() -> float:
+	_ensure_lod_map()
+	if _lod_map.is_empty():
+		return 0.38
+	return float(_lod_map.get("full_zoom_min", 0.38))
+
+
+## Returns "" (use full atlas), "mid", or "far" for the active LOD tile set.
+static func flora_lod_tier_for_zoom(zoom: float) -> String:
+	_ensure_lod_map()
+	if _lod_map.is_empty():
+		return ""
+	var full_min := flora_full_zoom_min()
+	if zoom >= full_min:
+		return ""
+	for tier_v in _lod_map.get("tiers", []):
+		if not tier_v is Dictionary:
+			continue
+		var tier: Dictionary = tier_v
+		var zmin := float(tier.get("zoom_min", 0.0))
+		var zmax := float(tier.get("zoom_max", full_min))
+		if zoom >= zmin and zoom < zmax:
+			return str(tier.get("id", ""))
+	var tiers: Array = _lod_map.get("tiers", [])
+	if tiers.is_empty():
+		return ""
+	return str((tiers[tiers.size() - 1] as Dictionary).get("id", ""))
+
+
+static func flora_lod_atlas_path(tier_id: String) -> String:
+	_ensure_lod_map()
+	for tier_v in _lod_map.get("tiers", []):
+		if not tier_v is Dictionary:
+			continue
+		var tier: Dictionary = tier_v
+		if str(tier.get("id", "")) == tier_id:
+			return str(tier.get("atlas_path", ""))
+	return ""
+
+
+## Stable per-plant colour for far-zoom vector LOD shapes.
+static func flora_lod_vector_colour(plant_id: String, layer_key: String) -> Color:
+	var hue := float(plant_id.hash() % 360) / 360.0
+	var base := Color.from_hsv(hue, 0.45, 0.72, 0.88)
+	match layer_key:
+		"canopy":
+			return base.darkened(0.15)
+		"understory":
+			return base
+		"ground":
+			return base.lightened(0.12)
+		_:
+			return base
+
+
+static func _ensure_lod_map() -> void:
+	if _lod_map_loaded:
+		return
+	_lod_map_loaded = true
+	if not FileAccess.file_exists(FLORA_LOD_MAP_PATH):
+		return
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(FLORA_LOD_MAP_PATH))
+	if parsed is Dictionary:
+		_lod_map = parsed
+
+
 static func _ensure_atlas_map() -> void:
 	if _atlas_map_loaded:
 		return

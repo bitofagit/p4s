@@ -85,33 +85,42 @@ tile_size = Vector2i(200, 200)
 sources/0 = SubResource("TileSetAtlasSource_flora")
 
 [node name="World" type="Node2D" unique_id=866994575]
-y_sort_enabled = true
+y_sort_enabled = false
 
 [node name="WeatherModulate" type="CanvasModulate" parent="."]
 color = Color(1, 1, 1, 1)
 
 [node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=549802686]
-y_sort_enabled = true
+rendering_quadrant_size = 32
 tile_set = SubResource("TileSet_terrain")
 script = ExtResource("4_map")
 
-[node name="UnderstoryLayer" type="TileMapLayer" parent="TileMapLayer"]
+[node name="CanopyLayer" type="TileMapLayer" parent="TileMapLayer"]
 z_index = 1
-y_sort_enabled = true
+position = Vector2(-25, -35)
 texture_filter = 0
+y_sort_enabled = false
+rendering_quadrant_size = 32
+collision_enabled = false
+navigation_enabled = false
 tile_set = SubResource("TileSet_flora")
 
-[node name="CanopyLayer" type="TileMapLayer" parent="TileMapLayer"]
+[node name="UnderstoryLayer" type="TileMapLayer" parent="TileMapLayer"]
 z_index = 2
-position = Vector2(-25, -35)
-y_sort_enabled = true
 texture_filter = 0
+y_sort_enabled = false
+rendering_quadrant_size = 32
+collision_enabled = false
+navigation_enabled = false
 tile_set = SubResource("TileSet_flora")
 
 [node name="GroundLayer" type="TileMapLayer" parent="TileMapLayer"]
 z_index = 3
-y_sort_enabled = true
 texture_filter = 0
+y_sort_enabled = false
+rendering_quadrant_size = 32
+collision_enabled = false
+navigation_enabled = false
 tile_set = SubResource("TileSet_flora")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1896162644]

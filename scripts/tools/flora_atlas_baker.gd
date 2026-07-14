@@ -11,8 +11,15 @@ const MAP_OUT_PATH := "res://data/flora_atlas_map.json"
 const COLUMNS := 14
 const ROWS := 15
 const TILE_SIZE := 200
-const CANOPY_COMPOSE_SIZE := int(TILE_SIZE * 1.2)
-const UNDERSTORY_COMPOSE_SIZE := int(150 * 0.9)
+## Canopy: 100% scale, single centred stamp.
+const CANOPY_COMPOSE_SIZE := TILE_SIZE
+## Understory: 75% scale, 2 stamps with rightward bias.
+const UNDERSTORY_COMPOSE_SIZE := int(TILE_SIZE * 0.75)
+## Groundcover: 33% scale, 6 stamps in a bounded strip across the bottom.
+const GROUND_COMPOSE_SIZE := int(TILE_SIZE * 0.33)
+## Groundcover placement bound — stamps never start past (135, 135) so the
+## 66 px cluster stays inside the 200 px cell and can't bleed into neighbours.
+const GROUND_MAX_ORIGIN := 135
 
 
 static func bake() -> Dictionary:
@@ -107,7 +114,7 @@ static func _load_source_png(path: String) -> Image:
 	if path.begins_with("res://"):
 		if ResourceLoader.exists(path):
 			var tex := load(path) as Texture2D
-			if tex:
+			if tex and tex.get_width() > 0 and tex.get_height() > 0:
 				img = tex.get_image()
 		if img == null:
 			var fs_path := ProjectSettings.globalize_path(path)
@@ -116,7 +123,7 @@ static func _load_source_png(path: String) -> Image:
 	else:
 		if FileAccess.file_exists(path):
 			img = Image.load_from_file(path)
-	if img == null:
+	if img == null or img.is_empty():
 		return null
 	if img.get_format() != Image.FORMAT_RGBA8:
 		img.convert(Image.FORMAT_RGBA8)
@@ -128,20 +135,29 @@ static func _compose_cell_from_source(source: Image, layer: String) -> Image:
 	cell.fill(Color(0, 0, 0, 0))
 	match layer:
 		"ground":
+			# 33% scale, 6 blend_rect stamps in a bounded strip across the
+			# bottom of the cell. Origins clamped to GROUND_MAX_ORIGIN (135)
+			# on both axes so the cluster never bleeds out of the tile.
 			var cluster := source.duplicate()
-			cluster.resize(65, 65, Image.INTERPOLATE_NEAREST)
+			cluster.resize(GROUND_COMPOSE_SIZE, GROUND_COMPOSE_SIZE, Image.INTERPOLATE_NEAREST)
 			var placements: Array[Vector2i] = [
-				Vector2i(0, 130), Vector2i(30, 135), Vector2i(60, 125),
-				Vector2i(90, 135), Vector2i(115, 130), Vector2i(135, 135),
+				Vector2i(0, 130), Vector2i(27, 135), Vector2i(54, 125),
+				Vector2i(81, 135), Vector2i(108, 130), Vector2i(135, 135),
 			]
 			for dest in placements:
-				cell.blend_rect(cluster, Rect2i(0, 0, 65, 65), dest)
+				var origin := Vector2i(
+					mini(dest.x, GROUND_MAX_ORIGIN),
+					mini(dest.y, GROUND_MAX_ORIGIN),
+				)
+				cell.blend_rect(cluster, Rect2i(0, 0, GROUND_COMPOSE_SIZE, GROUND_COMPOSE_SIZE), origin)
 		"understory":
+			# 75% scale, 2 blend_rect stamps with a rightward bias.
 			var cluster := source.duplicate()
 			cluster.resize(UNDERSTORY_COMPOSE_SIZE, UNDERSTORY_COMPOSE_SIZE, Image.INTERPOLATE_NEAREST)
-			for dest: Vector2i in [Vector2i(30, 20), Vector2i(50, 45)]:
+			for dest: Vector2i in [Vector2i(20, 10), Vector2i(50, 40)]:
 				cell.blend_rect(cluster, Rect2i(0, 0, UNDERSTORY_COMPOSE_SIZE, UNDERSTORY_COMPOSE_SIZE), dest)
 		_:
+			# Canopy: 100% scale, single centred stamp.
 			var full := source.duplicate()
 			if full.get_size() != Vector2i(CANOPY_COMPOSE_SIZE, CANOPY_COMPOSE_SIZE):
 				full.resize(CANOPY_COMPOSE_SIZE, CANOPY_COMPOSE_SIZE, Image.INTERPOLATE_NEAREST)
@@ -165,12 +181,14 @@ static func _make_placeholder_source(layer: String) -> Image:
 		"understory":
 			var u := Image.create(UNDERSTORY_COMPOSE_SIZE, UNDERSTORY_COMPOSE_SIZE, false, Image.FORMAT_RGBA8)
 			u.fill(Color(0, 0, 0, 0))
-			u.fill_rect(Rect2i(18, 36, 99, 81), Color("f9a825", 1.0))
+			var us := UNDERSTORY_COMPOSE_SIZE
+			u.fill_rect(Rect2i(int(us * 0.13), int(us * 0.27), int(us * 0.73), int(us * 0.6)), Color("f9a825", 1.0))
 			return u
 		_:
-			var g := Image.create(65, 65, false, Image.FORMAT_RGBA8)
+			var g := Image.create(GROUND_COMPOSE_SIZE, GROUND_COMPOSE_SIZE, false, Image.FORMAT_RGBA8)
 			g.fill(Color(0, 0, 0, 0))
-			g.fill_rect(Rect2i(8, 45, 50, 18), Color("00e5ff", 1.0))
+			var gs := GROUND_COMPOSE_SIZE
+			g.fill_rect(Rect2i(int(gs * 0.12), int(gs * 0.69), int(gs * 0.77), int(gs * 0.28)), Color("00e5ff", 1.0))
 			return g
 
 

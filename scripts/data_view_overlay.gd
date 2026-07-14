@@ -58,6 +58,8 @@ func _visible_tile_bounds() -> Rect2i:
 
 
 func _animated_stat_value(cell_pos: Vector2i, stat_id: String, final_value: float) -> float:
+	if not MetaManager.data_lens_fx:
+		return final_value
 	if transfer_overlay == null or map_ref == null:
 		return final_value
 	if not map_ref.is_sleeping and not DataViewLayout.waves_enabled(map_ref):
@@ -194,6 +196,8 @@ func _draw_forecast_ghost(
 	current: float,
 	delta: float
 ) -> void:
+	if not MetaManager.data_lens_fx:
+		return
 	if absf(delta) < 0.02:
 		return
 

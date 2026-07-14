@@ -11,10 +11,15 @@ config_version=5
 [application]
 
 config/name="P4S opencore"
-config/version="0.9.5.26"
+config/version="0.9.5.27"
 run/main_scene="uid://b8mainmenu01"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.6", "Mobile")
+run/max_fps=60
 config/icon="res://icon.svg"
+
+[audio]
+
+driver/output_latency=30
 
 [autoload]
 
@@ -42,4 +47,5 @@ window/stretch/aspect="expand"
 
 [rendering]
 
-rendering_device/driver.windows="d3d12"
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
