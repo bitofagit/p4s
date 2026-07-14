@@ -824,3 +824,4 @@ Cursor action log — one line per substantive change (newest at bottom). Append
 2026-07-14 — farm_data_manager.format_plant_death_log: fix % vs + precedence so tile inspector shows plant name/lifespan/death reason (was literal %s).
 2026-07-14 — starting_map: prefix unused y as _y in _replacement_land_for_stream_clearance; un-indent process_produce_action body so eat/sell yields run after inventory remove.
 2026-07-14 — Release v0.9.5.27: flora LOD atlases/vector far zoom, 4-tier graphics presets + VFX toggles, mobile Vulkan renderer, tile inspector death-log format fix; v0.9.5.26 tag retained.
+2026-07-14 — README.md: beginner install guide (Godot 4.6 Stable, Import project.godot, F5 play, releases links, troubleshooting).
