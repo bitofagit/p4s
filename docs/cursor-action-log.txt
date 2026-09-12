@@ -825,3 +825,6 @@ Cursor action log — one line per substantive change (newest at bottom). Append
 2026-07-14 — starting_map: prefix unused y as _y in _replacement_land_for_stream_clearance; un-indent process_produce_action body so eat/sell yields run after inventory remove.
 2026-07-14 — Release v0.9.5.27: flora LOD atlases/vector far zoom, 4-tier graphics presets + VFX toggles, mobile Vulkan renderer, tile inspector death-log format fix; v0.9.5.26 tag retained.
 2026-07-14 — README.md: beginner install guide (Godot 4.6 Stable, Import project.godot, F5 play, releases links, troubleshooting).
+2026-09-12 — Linux / Iris Xe / 8GB optimisation pass: first-run 1280×720 windowed; Iris Xe → Medium (not SVGA potato); Low keeps understory + LOD sprites (vector far-zoom off) + music_lite; flora_lod_map full≥0.28 / mid≥0.18; overnight time-sliced (~8ms) + overnight_ms log; always_track_call_stacks off; mobile Vulkan + opengl3 fallback.
+2026-09-12 — Audio: beats/SFX WAV→Ogg Vorbis (~86MB PCM → ~3.7MB); RadioManager skips 16-drum playlist on Low; leftover /audio /sfx copies also encoded.
+2026-09-12 — export_presets.cfg tracked (Linux x86_64 runnable + p4s_low_end SKU + Windows stub); docs/LINUX_LAPTOP_OPTIMISATION.txt + export/README.txt (.deb follow-up).

@@ -13,7 +13,11 @@ Windows export, or flora rendering — without re-reading the whole codebase.
 1. TL;DR (current state)
 ================================================================================
 
-- Godot 4.6, GL Compatibility renderer, 60 fps cap, 30 ms audio latency.
+- Godot 4.6, mobile (Vulkan) renderer with OpenGL 3 fallback, 60 fps cap, 30 ms audio latency.
+- 2026-09-12 Linux / Iris Xe / 8GB pass: first-run 1280×720 windowed; Iris Xe → Medium
+  (not VMware potato); Low keeps LOD plant sprites + music-lite; beats/SFX are Ogg;
+  overnight yields every ~8ms; export_presets.cfg Linux x86_64 is tracked.
+  See docs/LINUX_LAPTOP_OPTIMISATION.txt.
 - Flora uses a pre-baked 14×15 grid atlas (flora_atlas.png) on three TileMapLayers:
   Canopy (z=1), Understory (z=2), Ground (z=3). Y-sort is OFF on all flora layers
   (y-sort was ~1 canvas item per planted cell → thousands of draws on VMware).
@@ -104,11 +108,12 @@ FIX:
   - export_presets.cfg include_filter: data/*.csv, data/*.json, data/almanac/*.md
   - Verified: 33 plants load from exported pack
 
-EXPORT PRESETS (export_presets.cfg):
-  - Windows Desktop → ../P4Sopencore4.exe (x86_64)
-  - Windows Desktop ARM64 (VM / Surface) → ../exes/P4SopencoreARM64.exe
-  - Windows Desktop p4s-5 (low-end iGPU) → ../exes/p4s-5.exe
-    custom_features=p4s_low_end forces potato mode on any GPU
+EXPORT PRESETS (export_presets.cfg, tracked again):
+  - Linux Desktop x86_64 → build/linux/p4s-linux-x86_64.x86_64 (runnable)
+  - Linux Desktop x86_64 (p4s_low_end) → build/linux/p4s-linux-x86_64-lowend.x86_64
+  - Windows Desktop x86_64 stub → build/windows/P4Sopencore.exe
+  custom_features=p4s_low_end still forces potato mode (for VMs / HD 520, not Iris Xe).
+  .deb packaging is a follow-up (export/README.txt).
 
 
 ================================================================================

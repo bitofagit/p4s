@@ -1,0 +1,106 @@
+================================================================================
+P4S — LINUX / IRIS XE / 8GB LAPTOP OPTIMISATION
+================================================================================
+Generated: 2026-09-12
+Target: Intel Pentium 7505 (Tiger Lake) + Iris Xe iGPU + 8GB shared RAM
+Godot: 4.6.x  |  Renderer: mobile (Vulkan) with OpenGL 3 fallback
+
+
+1. WHAT CHANGED (first optimisation pass)
+----------------------------------------
+Display
+  - project.godot first-run window is 1280×720 *windowed* (design viewport still
+    2560×1600; canvas_items stretch). Exclusive fullscreen at a native 2560×1600
+    panel was the fill-rate killer.
+  - Low slider → 1280×720 windowed. Medium → 1600×900 windowed. High → fullscreen.
+  - Existing custom resolutions are not rewritten unless they still look like the
+    old Mac exclusive-fullscreen first-run defaults (display settings v2).
+
+Presets / GPU
+  - Safe-boot still initialises Low, then deferred GPU detect picks a first-run
+    preset: VMware / old Intel HD → Low + potato streaming; Iris Xe / modern iGPU
+    → Medium (readable flora, no potato); discrete + >8GB → High.
+  - Iris Xe / Pentium 7505 / "Xe Graphics" are never treated as VMware SVGA.
+  - Low now keeps understory sprites + baked LOD atlases. Vector far-zoom shapes
+    are OFF on Low/Medium/High (optional Custom toggle only).
+
+Flora LOD (data/flora_lod_map.json)
+  - Default farm zoom 0.25 → mid LOD (50% sprites, species still distinct).
+  - Full atlas from zoom 0.28. Far LOD atlas below 0.18.
+  - Low (non-potato) min zoom 0.18. Potato / VMware min zoom 0.35.
+
+Audio
+  - Beats + SFX converted WAV → Ogg Vorbis (~128 kb/s). Game audio tree dropped
+    from ~86MB uncompressed PCM to ~3.7MB.
+  - Low `music_lite`: Idle / Planning / Dash only (no 16-track drum playlist).
+  - Mute remains in Sound Settings.
+
+Overnight
+  - Full-grid sleep work yields every ~8ms (`[P4S perf] overnight_ms=…`).
+  - Nutrient-transfer snapshots skipped when Data Lens FX is off.
+
+Renderer
+  - Kept `mobile` (Vulkan). Rationale: 2D TileMaps batch well on Iris Xe / Mesa
+    ANV. `gl_compatibility` is the automatic fallback if Vulkan fails
+    (`rendering_device/fallback_to_opengl3=true`), not the laptop default.
+
+Editor (8GB)
+  - `always_track_call_stacks` is now false (re-enable in the debugger if needed).
+  - Editor Settings that help when the project feels heavy:
+      Editor → Editor Settings → Network → SSL (leave defaults)
+      Debugger: disable "Always Track Call Stacks" if an editor override turns it on
+      Close unused 3D / Animation docks; one scene open at a time
+      Project → Tools → Orphan Node Monitor off unless hunting leaks
+      Run with F5 (embedded) rather than a second 2560×1600 game window
+
+Export
+  - Tracked `export_presets.cfg`: Linux x86_64 (runnable) + optional
+    `p4s_low_end` Linux SKU + Windows x86_64 stub.
+  - Output: `build/linux/p4s-linux-x86_64.x86_64` (folder gitignored).
+  - Installable .deb is a follow-up — see export/README.txt.
+
+
+2. HOW TO TEST ON THE TARGET LAPTOP
+-----------------------------------
+A. Editor
+  1. Open this repo in Godot 4.6 Stable (standard, not .NET).
+  2. Wait for first import (ogg stubs will be rewritten by the editor — expected).
+  3. F5 → main menu. Confirm window is ~1280×720 (or 1600×900 if Medium applied).
+  4. Graphics: first-run on Iris Xe should land on Medium. Log line:
+       [P4S] first-run preset=Medium low_end_gpu=false (gpu=…Iris…Xe…)
+       [P4S] low_end_gpu=OFF (Iris Xe class: …)
+  5. New farm → default zoom ~0.25. Plants must be identifiable (mid LOD sprites,
+     not coloured rectangles). Zoom in past ~0.28 for full atlas.
+  6. Pan / zoom / Sleep. UI should stay responsive during overnight.
+  7. Sound Settings → Muted is the music-off path; Low uses music-lite automatically.
+
+B. Linux export
+  1. Editor → Project → Export → "Linux Desktop x86_64".
+  2. Need the Linux export template for 4.6 (Editor → Manage Export Templates).
+  3. Export to build/linux/. Run the binary on the laptop.
+  4. Session log: beside the binary, P4S_logs/latest_session.txt
+
+C. What to read in logs
+  [P4S sysinfo]  os / cpu / gpu / window / max_fps / low_end / preset / music_lite / ram
+  [P4S perf]     fps, avg/worst ms, draws, objs, VRAM  (every 5s)
+  [P4S spike]    frame >120ms
+  [P4S perf] overnight_ms=N cells=N preset=… low_end=…
+  Target intent on this laptop: ≥30 fps while panning at 1280×720 Medium;
+  overnight_ms in the low thousands with a live UI (not a multi-second freeze).
+
+
+3. MEASUREMENTS / ASSUMPTIONS (no Pentium 7505 in CI)
+-----------------------------------------------------
+This pass was implemented in a cloud Linux workspace *without* Godot 4.6 or the
+target iGPU. WAV→Ogg was verified with ffmpeg (idle.ogg ≈ 12.8s, 113 kb/s Vorbis).
+Renderer choice and Iris Xe first-run mapping are from Godot 4.6 / Mesa ANV
+practice plus the Jul 2026 in-repo notes — confirm with a real P4S_logs capture
+on the laptop before calling the pass done.
+
+
+4. FOLLOW-UPS
+-------------
+  - .deb packaging (fpm or a debian/ folder) once the Linux export is play-tested.
+  - Mac / Windows export templates (presets stubbed; not this PR's focus).
+  - Optional: delete unused leftover copies under /audio and /sfx (not loaded).
+================================================================================
