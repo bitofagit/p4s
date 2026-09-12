@@ -3,7 +3,6 @@
 # ==========================================
 .godot/
 *.translation
-*.gdignore
 /android/
 /build/
 

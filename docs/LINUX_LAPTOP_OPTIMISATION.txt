@@ -12,7 +12,7 @@ Display
   - project.godot first-run window is 1280×720 *windowed* (design viewport still
     2560×1600; canvas_items stretch). Exclusive fullscreen at a native 2560×1600
     panel was the fill-rate killer.
-  - Low slider → 1280×720 windowed. Medium → 1600×900 windowed. High → fullscreen.
+  - Low / Medium slider → 1280×720 windowed. High → fullscreen.
   - Existing custom resolutions are not rewritten unless they still look like the
     old Mac exclusive-fullscreen first-run defaults (display settings v2).
 
@@ -26,7 +26,7 @@ Presets / GPU
 
 Flora LOD (data/flora_lod_map.json)
   - Default farm zoom 0.25 → mid LOD (50% sprites, species still distinct).
-  - Full atlas from zoom 0.28. Far LOD atlas below 0.18.
+  - Full atlas from zoom 0.32 (pass 2). Far LOD atlas below 0.18.
   - Low (non-potato) min zoom 0.18. Potato / VMware min zoom 0.35.
 
 Audio
@@ -57,7 +57,35 @@ Export
   - Tracked `export_presets.cfg`: Linux x86_64 (runnable) + optional
     `p4s_low_end` Linux SKU + Windows x86_64 stub.
   - Output: `build/linux/p4s-linux-x86_64.x86_64` (folder gitignored).
-  - Installable .deb is a follow-up — see export/README.txt.
+  - .deb helper: export/pack_deb.sh + export/p4s.desktop (needs a tested binary).
+
+
+1b. PASS 2 (before laptop playtest)
+-----------------------------------
+Hot paths
+  - Lens / overlay hotkeys no longer call full-grid update_visuals (no 16k set_cell
+    when toggling Hydration / Guild / Energy). apply_lens() still rebuilds the
+    overlay image.
+  - After Sleep: only planted cells + overnight dirty land are repainted
+    (`[P4S perf] overnight_repaint_cells=N`). Empty wild tiles stay as they were.
+  - A* after sleep updates dirty land cells only (plants do not change solidity).
+  - world.gd zoom culling returns early unless the LOD tier or layer toggles change
+    (pan no longer re-applies visibility every frame).
+
+Medium (Iris Xe default)
+  - Window 1280×720 (was 1600×900 on the slider).
+  - Rain cap 100 (was 180). data_lens_fx OFF (flat data blocks; enable in Custom).
+  - music_lite ON (Idle / Planning / Dash only — no 16-drum playlist in RAM).
+  - Flora still mid LOD at default zoom 0.25; full atlas from 0.32.
+
+Physics
+  - No 3D/2D physics bodies in this project. Jolt disabled; GodotPhysics3D at
+    30 Hz; physics helper threads off (dual-core).
+
+Editor / tree trim
+  - Deleted unused leftover /audio and /sfx copies (game loads assets/base/audio).
+  - .gdignore on p-4s-refactor/, p-4s-8.5.26/, archive/, obsidian/ so the 8GB
+    editor does not import stub projects or the design vault.
 
 
 2. HOW TO TEST ON THE TARGET LAPTOP
@@ -65,42 +93,54 @@ Export
 A. Editor
   1. Open this repo in Godot 4.6 Stable (standard, not .NET).
   2. Wait for first import (ogg stubs will be rewritten by the editor — expected).
-  3. F5 → main menu. Confirm window is ~1280×720 (or 1600×900 if Medium applied).
+     Stub folders and obsidian/ should *not* appear in the FileSystem dock.
+  3. F5 → main menu. Confirm window is ~1280×720.
   4. Graphics: first-run on Iris Xe should land on Medium. Log line:
        [P4S] first-run preset=Medium low_end_gpu=false (gpu=…Iris…Xe…)
        [P4S] low_end_gpu=OFF (Iris Xe class: …)
+       [P4S sysinfo] … preset=Medium music_lite=true
   5. New farm → default zoom ~0.25. Plants must be identifiable (mid LOD sprites,
-     not coloured rectangles). Zoom in past ~0.28 for full atlas.
-  6. Pan / zoom / Sleep. UI should stay responsive during overnight.
-  7. Sound Settings → Muted is the music-off path; Low uses music-lite automatically.
+     not coloured rectangles). Zoom in past ~0.32 for full atlas.
+  6. Toggle Hydration / Guild / Energy lenses: should feel instant (no full-map hitch).
+  7. Pan / zoom / Sleep. UI should stay responsive during overnight.
+  8. Sound Settings → Muted is the music-off path; Medium/Low use music-lite.
 
 B. Linux export
   1. Editor → Project → Export → "Linux Desktop x86_64".
   2. Need the Linux export template for 4.6 (Editor → Manage Export Templates).
   3. Export to build/linux/. Run the binary on the laptop.
-  4. Session log: beside the binary, P4S_logs/latest_session.txt
+  4. Optional: ./export/pack_deb.sh (needs dpkg-deb) after the binary plays.
+  5. Session log: beside the binary, P4S_logs/latest_session.txt
 
 C. What to read in logs
   [P4S sysinfo]  os / cpu / gpu / window / max_fps / low_end / preset / music_lite / ram
   [P4S perf]     fps, avg/worst ms, draws, objs, VRAM  (every 5s)
   [P4S spike]    frame >120ms
   [P4S perf] overnight_ms=N cells=N preset=… low_end=…
+  [P4S perf] overnight_repaint_cells=N
   Target intent on this laptop: ≥30 fps while panning at 1280×720 Medium;
-  overnight_ms in the low thousands with a live UI (not a multi-second freeze).
+  overnight_ms in the low thousands with a live UI; overnight_repaint_cells
+  much smaller than map width×height on a lightly planted farm.
 
 
 3. MEASUREMENTS / ASSUMPTIONS (no Pentium 7505 in CI)
 -----------------------------------------------------
-This pass was implemented in a cloud Linux workspace *without* Godot 4.6 or the
+Passes 1–2 were implemented in a cloud Linux workspace *without* Godot 4.6 or the
 target iGPU. WAV→Ogg was verified with ffmpeg (idle.ogg ≈ 12.8s, 113 kb/s Vorbis).
-Renderer choice and Iris Xe first-run mapping are from Godot 4.6 / Mesa ANV
-practice plus the Jul 2026 in-repo notes — confirm with a real P4S_logs capture
+Renderer choice, Iris Xe first-run mapping, and Jolt removal are from Godot 4.6
+docs plus the Jul 2026 in-repo notes — confirm with a real P4S_logs capture
 on the laptop before calling the pass done.
+
+Still needs a real Godot 4.6 / laptop run:
+  - Confirm ogg .import rewrite and music-lite Idle clip
+  - Confirm lens toggles do not hitch and plants stay identifiable at zoom 0.25
+  - Confirm overnight_repaint_cells + no missing sprites after Sleep (deaths/spread)
+  - Linux export template + pack_deb.sh on Debian/Ubuntu
+  - Physics 30 Hz has no accidental gameplay dependency (none expected)
 
 
 4. FOLLOW-UPS
 -------------
-  - .deb packaging (fpm or a debian/ folder) once the Linux export is play-tested.
+  - Playtest the Linux export on the Pentium 7505, then run pack_deb.sh if wanted.
   - Mac / Windows export templates (presets stubbed; not this PR's focus).
-  - Optional: delete unused leftover copies under /audio and /sfx (not loaded).
 ================================================================================

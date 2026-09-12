@@ -79,7 +79,7 @@ static func bake() -> Dictionary:
 			out_path, cols, rows, inner_sz,
 		])
 
-	var full_zoom := 0.28
+	var full_zoom := 0.32
 	var manifest := {
 		"version": 1,
 		"source_atlas": FULL_ATLAS_PATH,

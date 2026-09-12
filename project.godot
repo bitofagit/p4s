@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="P4S opencore"
-config/version="0.9.5.28"
+config/version="0.9.5.29"
 run/main_scene="uid://b8mainmenu01"
 config/features=PackedStringArray("4.6", "Mobile")
 run/max_fps=60
@@ -50,7 +50,12 @@ window/stretch/aspect="expand"
 
 [physics]
 
-3d/physics_engine="Jolt Physics"
+; 2D TileMap game: no 3D bodies. Skip Jolt init; keep a cheap empty Godot 3D world.
+; Dual-core: do not run physics on a helper thread (contention > benefit).
+common/physics_ticks_per_second=30
+2d/run_on_separate_thread=false
+3d/run_on_separate_thread=false
+3d/physics_engine="GodotPhysics3D"
 
 [rendering]
 

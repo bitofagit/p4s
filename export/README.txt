@@ -20,16 +20,14 @@ Presets live in export_presets.cfg (tracked).
    data/*.csv, data/*.json, data/almanac/*.md must ship or seed inventory
    is empty. Do not drop this filter.
 
-5. .deb packaging (follow-up, not in this PR)
-   After a playable binary exists:
+5. .deb packaging (prep script; needs a tested Linux export)
+   After exporting Linux Desktop x86_64:
 
-     mkdir -p pkg/usr/games pkg/usr/share/p4s
-     cp build/linux/p4s-linux-x86_64.x86_64 pkg/usr/games/p4s
-     # plus .desktop + icon under usr/share/applications and usr/share/pixmaps
-     # then fpm or dpkg-deb --build
+     ./export/pack_deb.sh
 
-   Track that work as a separate issue once the export is tested on the
-   Pentium 7505 laptop.
+   Writes build/linux/p4s_<version>_amd64.deb (requires dpkg-deb).
+   Desktop file: export/p4s.desktop. Not a substitute for playtesting the
+   binary on the Pentium 7505 first.
 
 6. Windows / Mac
    A Windows x86_64 stub is in export_presets.cfg. Mac/Windows installers

@@ -13,7 +13,7 @@ const SETTINGS_PATH := "user://settings.json"
 const DISPLAY_SETTINGS_VERSION := 2
 const DEFAULT_RESOLUTION := Vector2i(1280, 720)
 const FALLBACK_RESOLUTION := Vector2i(1280, 720)
-const MEDIUM_RESOLUTION := Vector2i(1600, 900)
+const MEDIUM_RESOLUTION := Vector2i(1280, 720)
 const HIGH_WINDOWED_RESOLUTION := Vector2i(1920, 1080)
 const RESOLUTION_PRESETS: Array[Vector2i] = [
 	Vector2i(1280, 720),

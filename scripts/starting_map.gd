@@ -59,6 +59,9 @@ var is_sleeping: bool = false
 ## Time-slice overnight full-grid work so dual-core / 8GB machines keep a live frame.
 const OVERNIGHT_SLICE_BUDGET_USEC := 8000
 var _overnight_slice_usec: int = 0
+## Cells whose land/structure changed overnight (plant occupancy is snapshotted separately).
+var _visual_dirty: Dictionary = {}
+var _overnight_flora_was: Dictionary = {}
 var hud_instance: Control
 ## Wired after HUD instantiate (scene paths).
 var right_info_panel: PanelContainer
@@ -2149,7 +2152,7 @@ func _on_hud_lens_selected(item: String) -> void:
 			active_lens = "plant_data"
 		"energy", "Energy Vision":
 			active_lens = "energy"
-	_refresh_all_visuals()
+	_refresh_lens_only()
 
 
 func _on_hud_inventory_selected(_item: String) -> void:
@@ -2237,16 +2240,62 @@ func close_almanac() -> void:
 
 
 func _refresh_all_visuals() -> void:
-	## Full-grid pass — map load, save load, wake from sleep, lens toggles only.
+	## Full-grid tile pass — map load / save load / first boot only.
 	update_visuals()
 	apply_lens()
-	if is_instance_valid(structure_overlay) and not is_sleeping:
-		structure_overlay.queue_redraw()
-	if is_instance_valid(preview_overlay):
-		preview_overlay.queue_redraw()
-	var hover_layer_refresh = get_node_or_null("HoverLayer")
-	if hover_layer_refresh:
-		hover_layer_refresh.queue_redraw()
+	_refresh_overlay_redraws()
+
+
+func _refresh_lens_only() -> void:
+	## Lens / overlay switch: rebuild overlay textures, leave TileMap cells alone.
+	apply_lens()
+	_sync_lens_overlay_nodes()
+	_refresh_overlay_redraws()
+
+
+func _mark_visual_dirty(pos: Vector2i) -> void:
+	_visual_dirty[pos] = true
+
+
+func _cell_has_any_flora(cell: Dictionary) -> bool:
+	return (
+		_cell_str_nonempty(cell, "canopy")
+		or _cell_str_nonempty(cell, "understory")
+		or _cell_str_nonempty(cell, "ground")
+	)
+
+
+func _snapshot_overnight_flora() -> void:
+	_overnight_flora_was.clear()
+	for x in range(_map_w()):
+		for y in range(_map_h()):
+			if _cell_has_any_flora(FarmDataManager.grid_data[x][y]):
+				_overnight_flora_was[Vector2i(x, y)] = true
+
+
+func _refresh_visuals_after_overnight() -> void:
+	## Repaint planted cells (stage/death) plus land/structure dirty cells — not the empty wild grid.
+	_overnight_begin_slice()
+	var painted := 0
+	for x in range(_map_w()):
+		await _overnight_maybe_yield()
+		for y in range(_map_h()):
+			var pos := Vector2i(x, y)
+			var cell: Dictionary = FarmDataManager.grid_data[x][y]
+			if (
+				_overnight_flora_was.has(pos)
+				or _visual_dirty.has(pos)
+				or _cell_has_any_flora(cell)
+			):
+				_update_single_cell_visuals(pos)
+				painted += 1
+	for pos: Vector2i in _visual_dirty:
+		_update_astar_cell(pos)
+	_visual_dirty.clear()
+	_overnight_flora_was.clear()
+	apply_lens()
+	_refresh_overlay_redraws()
+	print("[P4S perf] overnight_repaint_cells=%d" % painted)
 
 
 func _refresh_overlay_redraws() -> void:
@@ -3128,7 +3177,10 @@ func update_visuals() -> void:
 			for y in range(_map_h()):
 				_update_single_cell_visuals(Vector2i(x, y))
 
-	# Energy Vision: zone metaballs + maintenance bubble (separate overlay nodes)
+	_sync_lens_overlay_nodes()
+
+
+func _sync_lens_overlay_nodes() -> void:
 	if is_instance_valid(energy_zone_overlay):
 		energy_zone_overlay.visible = (active_lens == "energy")
 		if active_lens == "energy" and not is_sleeping:
@@ -3141,7 +3193,6 @@ func update_visuals() -> void:
 		maintenance_bubble_overlay.visible = (active_lens == "energy")
 		if active_lens == "energy":
 			maintenance_bubble_overlay.queue_redraw()
-
 	var guild_overlay := get_node_or_null("GuildOverlayNode") as Node2D
 	if is_instance_valid(guild_overlay):
 		guild_overlay.visible = (active_lens == "guild")
@@ -4187,8 +4238,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 					print("Toggled Overlay: ", active_lens)
 
-					# Lens toggles need a full pass (terrain + overlay rebuild).
-					_refresh_all_visuals()
+					# Overlay / lens texture only — do not repaint every TileMap cell.
+					_refresh_lens_only()
 				elif action_name == "Water":
 					set_current_tool("water_tile")
 				elif action_name == "Rotovator":
@@ -5242,7 +5293,9 @@ func _execute_worker_queue(w_data: Dictionary, w_queue: Array, dash_dur: float, 
 
 func _generate_triage_data() -> void:
 	triage_cache.clear()
+	_overnight_begin_slice()
 	for x in range(FarmDataManager.player_bounds_left + 1, FarmDataManager.player_bounds_right):
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell = FarmDataManager.grid_data[x][y]
 			for layer in ["canopy", "understory", "ground"]:
@@ -5339,14 +5392,11 @@ func trigger_sleep() -> void:
 	if not overnight_events.is_empty() and is_instance_valid(main_camera) and main_camera.get("is_playing_events"):
 		await main_camera.events_finished
 
-	# 3. Final visual redraw
-	if has_method("_refresh_all_visuals"):
-		_refresh_all_visuals()
-	if has_method("_refresh_minimap"):
-		_refresh_minimap()
+	# 3. Incremental visual redraw (planted + dirty cells, not the empty wild grid)
+	await _refresh_visuals_after_overnight()
+	_refresh_minimap()
 
 	FarmDataManager.action_queue.clear()
-	_sync_astar_with_grid()
 	_refresh_queue_ui()
 
 
@@ -5372,7 +5422,7 @@ func trigger_sleep() -> void:
 
 	is_daytime = true
 
-	_generate_triage_data()
+	await _generate_triage_data()
 	morning_triage_active = false
 	get_tree().create_timer(3.0, false).timeout.connect(func():
 		morning_triage_active = true
@@ -5594,6 +5644,7 @@ func _start_turn_transfer_waves() -> void:
 func _process_turn_logic() -> void:
 	var overnight_t0 := Time.get_ticks_msec()
 	_overnight_begin_slice()
+	_snapshot_overnight_flora()
 	_turn_nutrient_flows.clear()
 	if MetaManager.data_lens_fx:
 		_last_transfer_snapshot = _snapshot_transfer_stats()
@@ -6031,6 +6082,7 @@ func _process_turn_logic() -> void:
 						if str(FarmDataManager.grid_data[nx][ny].get("land", "")) == "overgrown":
 							# The pig roots up the weeds (rotovates) and leaves manure (+2.0 N)
 							FarmDataManager.grid_data[nx][ny]["land"] = "cultivated"
+							_mark_visual_dirty(Vector2i(nx, ny))
 							var pc: Dictionary = FarmDataManager.grid_data[nx][ny]
 							pc["nitrogen"] = clampf(float(pc.get("nitrogen", 5.0)) + 0.4, 0.0, 10.0)
 							pc["macro_life"] = clampf(float(pc.get("macro_life", 2.0)) + 0.2, 0.0, 10.0)
@@ -6083,6 +6135,7 @@ func _process_turn_logic() -> void:
 					# Optional: Turn wild soil to overgrown if a weed takes it over
 					if str(t_cell.get("land", "")) == "wild" and sp_data.get("toxicity", "") == "Invasive weed":
 						t_cell["land"] = "overgrown"
+						_mark_visual_dirty(Vector2i(tx, ty))
 
 	FarmDataManager.current_turn += 1
 	FarmDataManager.sync_calendar_state()
@@ -6188,6 +6241,7 @@ func _process_turn_logic() -> void:
 								if str(p_cell.get("structure", "")) != "pig_house" and not p_cell.get("is_river", false):
 									# 1. Rototill the land and fertilize
 									p_cell["land"] = "cultivated"
+									_mark_visual_dirty(Vector2i(nx, ny))
 									p_cell["nitrogen"] = clampf(float(p_cell.get("nitrogen", 5.0)) + 0.08, 0.0, 10.0)
 									p_cell["macro_life"] = clampf(float(p_cell.get("macro_life", 2.0)) + 0.04, 0.0, 10.0)
 									p_cell["has_slugs"] = false

@@ -1,6 +1,6 @@
 # Permaculture 4 Squares (P4S)
 
-**Version 0.9.5.28** — Open-source permaculture farming simulator built with **Godot 4**.
+**Version 0.9.5.29** — Open-source permaculture farming simulator built with **Godot 4**.
 
 You plant crops on a grid, manage soil as a living system, and sleep to advance the calendar. This is the **open-core** edition (Permaculture 101 / sandbox). It is free under the [MIT Licence](LICENSE).
 
@@ -72,7 +72,7 @@ Exact bindings can change with settings, but typically:
 
 Graphics presets (**Low / Medium / High / Custom**) live under Graphics settings.
 First run on an **Iris Xe / 8GB** laptop should land on **Medium** at **1280×720**
-windowed (plants stay on LOD sprite atlases). Use **Low** if pan/zoom still stutters;
+windowed (plants stay on mid LOD sprite atlases at default farm zoom). Use **Low** if pan/zoom still stutters;
 use **Muted** in Sound Settings for a music-off path. See
 [Linux laptop notes](docs/LINUX_LAPTOP_OPTIMISATION.txt).
 

@@ -14,10 +14,10 @@ Windows export, or flora rendering — without re-reading the whole codebase.
 ================================================================================
 
 - Godot 4.6, mobile (Vulkan) renderer with OpenGL 3 fallback, 60 fps cap, 30 ms audio latency.
-- 2026-09-12 Linux / Iris Xe / 8GB pass: first-run 1280×720 windowed; Iris Xe → Medium
-  (not VMware potato); Low keeps LOD plant sprites + music-lite; beats/SFX are Ogg;
-  overnight yields every ~8ms; export_presets.cfg Linux x86_64 is tracked.
-  See docs/LINUX_LAPTOP_OPTIMISATION.txt.
+- 2026-09-12 Linux / Iris Xe / 8GB pass + pass 2: first-run 1280×720; Iris Xe → Medium
+  (not VMware potato); LOD sprites (full atlas ≥0.32); music-lite on Low+Medium;
+  overnight incremental repaint; lens toggles skip full TileMap walk; Jolt off;
+  leftover /audio /sfx removed. See docs/LINUX_LAPTOP_OPTIMISATION.txt.
 - Flora uses a pre-baked 14×15 grid atlas (flora_atlas.png) on three TileMapLayers:
   Canopy (z=1), Understory (z=2), Ground (z=3). Y-sort is OFF on all flora layers
   (y-sort was ~1 canvas item per planted cell → thousands of draws on VMware).

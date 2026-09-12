@@ -51,6 +51,10 @@ var _stream_map_ref: Node
 var _last_stream_cam_pos: Vector2 = Vector2(INF, INF)
 var _last_stream_zoom: float = -1.0
 var _stream_cooldown: float = 0.0
+var _last_cull_tier: String = "__unset__"
+var _last_cull_ground: bool = false
+var _last_cull_understory: bool = false
+var _last_cull_vector: bool = false
 
 ## Aim point from input (may be outside bounds; we only apply clamped position to the camera).
 var desired_pos: Vector2
@@ -100,7 +104,9 @@ func _apply_low_end_camera_limits() -> void:
 
 ## Live refresh when graphics preset / toggles change in the pause or main menu.
 func apply_meta_graphics_settings() -> void:
+	_last_cull_tier = "__unset__"
 	_apply_low_end_camera_limits()
+	_update_zoom_culling()
 
 
 func _apply_map_bounds_from_farm() -> void:
@@ -236,6 +242,18 @@ func _update_zoom_culling() -> void:
 	if use_lod:
 		lod_tier = PlantGrowth.flora_lod_tier_for_zoom(zoom.x)
 		use_lod = lod_tier != ""
+	var want_vector := use_lod and lod_tier == "far" and MetaManager.flora_vector_far_zoom
+	if (
+		lod_tier == _last_cull_tier
+		and MetaManager.render_groundcover == _last_cull_ground
+		and MetaManager.render_understory == _last_cull_understory
+		and want_vector == _last_cull_vector
+	):
+		return
+	_last_cull_tier = lod_tier
+	_last_cull_ground = MetaManager.render_groundcover
+	_last_cull_understory = MetaManager.render_understory
+	_last_cull_vector = want_vector
 	var show_full: bool = not use_lod
 	if is_instance_valid(_cull_ground_layer):
 		var want_ground: bool = MetaManager.render_groundcover and show_full
@@ -259,7 +277,6 @@ func _update_zoom_culling() -> void:
 			atlas_tier = ""
 		_cull_lod_layers.set_lod_tier(atlas_tier if use_lod else "")
 	if is_instance_valid(_cull_vector_lod):
-		var want_vector := use_lod and lod_tier == "far" and MetaManager.flora_vector_far_zoom
 		_cull_vector_lod.apply_layer_settings(
 			MetaManager.render_groundcover,
 			MetaManager.render_understory,

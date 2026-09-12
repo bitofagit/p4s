@@ -1,7 +1,7 @@
 {
 	"baked_at": "2026-07-14T10:00:32",
 	"columns": 14,
-	"full_zoom_min": 0.28,
+	"full_zoom_min": 0.32,
 	"rows": 15,
 	"source_atlas": "res://assets/base/sprites/atlas/flora_atlas.png",
 	"tiers": [
@@ -9,7 +9,7 @@
 			"atlas_path": "res://assets/base/sprites/atlas/lod/flora_atlas_lod_mid.png",
 			"id": "mid",
 			"inner_scale": 0.5,
-			"zoom_max": 0.28,
+			"zoom_max": 0.32,
 			"zoom_min": 0.18
 		},
 		{

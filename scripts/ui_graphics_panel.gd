@@ -127,7 +127,7 @@ func _ready() -> void:
 	var lbl_preset_hint = Label.new()
 	lbl_preset_hint.text = (
 		"Low: 1280×720, understory sprites + LOD atlases, music-lite. "
-		+ "Medium (Iris Xe / 8GB first-run): 1600×900, same readable plants, more particles. "
+		+ "Medium (Iris Xe / 8GB first-run): 1280×720, same readable plants, fewer particles. "
 		+ "High: fullscreen + groundcover. Manual tweaks switch to Custom."
 	)
 	lbl_preset_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
