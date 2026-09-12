@@ -22,7 +22,7 @@ These are defined in `project.godot` under `[autoload]`. They exist for the whol
 |------|--------|------|
 | **FarmDataManager** | `scripts/farm_data_manager.gd` | **Authoritative game state:** turn, money, grid, workers, energy, inventory, seasons, action queues, etc. Emits signals when things change. |
 | **SaveManager** | `scripts/save_manager.gd` | **Read/write save files** under `user://` (JSON). Also **hotkey settings** in `user://settings.json`. Can set `pending_load_save_name` so the map loads a save when it becomes ready. |
-| **MetaManager** | `scripts/meta_manager.gd` | **Meta-progression** that is not a single farm save: karma, unlocks, “dev mode” flag. Persists in `user://shadow_logic_meta.json`. |
+| **MetaManager** | `scripts/meta_manager.gd` | **Meta-progression** that is not a single farm save: karma, unlocks, “dev mode” flag, **graphics presets**. Persists in `user://shadow_logic_meta.json`. First-run GPU detect: Iris Xe → Medium; VMware/old HD → Low + potato. See `docs/LINUX_LAPTOP_OPTIMISATION.txt`. |
 | **RadioManager** | `scripts/radio_manager.gd` | **Audio:** interactive music, beats, SFX pool. Other code can react to music/beat events. |
 
 **Rule of thumb:** If you are adding “one save file per farm,” use **SaveManager** + **FarmDataManager**. If you are adding “account-wide unlocks or karma,” use **MetaManager**.

@@ -62,11 +62,13 @@ world.tscn
       Camera2D     <- scripts/world.gd (dynamic zoom culling of flora layers)
 
 Graphics settings (MetaManager → shadow_logic_meta.json): 4-tier preset slider
-(Low / Medium / High / Custom). Safe boot with no saved meta initialises Low
-(groundcover OFF, understory OFF, zoom culling ON, low_end_gpu ON — refined by
-GPU detection for Iris Xe / Apple / NVIDIA). Custom stores individual toggles.
+(Low / Medium / High / Custom). Safe boot initialises Low then deferred GPU
+detect picks a first-run preset: VMware / old Intel HD → Low + potato streaming;
+Iris Xe / 8GB laptops → Medium (understory sprites + LOD atlases, no potato);
+discrete + >8GB → High. Low keeps flora identifiable (vector far-zoom OFF).
+First-run window is 1280×720 windowed (design viewport still 2560×1600).
 Exposed via ui_graphics_panel.gd PresetSlider + detail checkboxes in main menu
-and pause menu.
+and pause menu. See docs/LINUX_LAPTOP_OPTIMISATION.txt.
 Flora TileMapLayers never use y-sort (y-sort = one canvas item per cell; kills
 VMware/iGPU). Layer stacking is z_index + offsets only.
 
@@ -209,3 +211,5 @@ user://shadow_logic_meta.json — MetaManager
 2026-07-10 — VMware potato mode v2: no content_scale hack; flora TileMaps permanently off on low-end (LOD only); cheap terrain stream + zoom floor 0.35 / start 0.55.
 2026-07-14 — Flora LOD: bake_flora_lod_atlas + FloraLodLayers (mid/far low-res atlas TileMaps in assets/base/sprites/atlas/lod/); replaced FloraLodOverlay coloured rects; zoom tiers in data/flora_lod_map.json.
 2026-07-14 — Renderer mobile (Vulkan) baseline; MetaManager 4-tier graphics presets + safe-boot Low; ui_graphics_panel PresetSlider with auto-Custom detection.
+2026-09-12 — Linux / Iris Xe / 8GB pass: 1280×720 first-run window; Iris Xe first-run Medium (not SVGA potato); Low keeps LOD sprites + music-lite; overnight time-sliced; WAV→Ogg; tracked Linux x86_64 export preset; always_track_call_stacks off.
+2026-09-12 — Pass 2: lens toggles skip full TileMap repaint; overnight paints planted+dirty cells only; Medium 1280×720 + music-lite + 100 particles; Jolt removed (GodotPhysics3D, 30 Hz, no extra physics thread); leftover /audio /sfx deleted; .gdignore on stub/obsidian folders.

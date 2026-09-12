@@ -1,6 +1,6 @@
 # Permaculture 4 Squares (P4S)
 
-**Version 0.9.5.27** — Open-source permaculture farming simulator built with **Godot 4**.
+**Version 0.9.5.29** — Open-source permaculture farming simulator built with **Godot 4**.
 
 You plant crops on a grid, manage soil as a living system, and sleep to advance the calendar. This is the **open-core** edition (Permaculture 101 / sandbox). It is free under the [MIT Licence](LICENSE).
 
@@ -70,7 +70,11 @@ Exact bindings can change with settings, but typically:
 - **Esc** opens the pause / graphics menu
 - **Sleep** advances time after you have planned your day’s work
 
-Graphics presets (**Low / Medium / High / Custom**) live under Graphics settings — start on **Low** if the farm feels slow.
+Graphics presets (**Low / Medium / High / Custom**) live under Graphics settings.
+First run on an **Iris Xe / 8GB** laptop should land on **Medium** at **1280×720**
+windowed (plants stay on mid LOD sprite atlases at default farm zoom). Use **Low** if pan/zoom still stutters;
+use **Muted** in Sound Settings for a music-off path. See
+[Linux laptop notes](docs/LINUX_LAPTOP_OPTIMISATION.txt).
 
 ---
 
@@ -80,7 +84,8 @@ Graphics presets (**Low / Medium / High / Custom**) live under Graphics settings
 |---------|-------------|
 | “Failed to load” / missing scripts | Confirm you opened the folder with `project.godot` at the root, and you are on **Godot 4.6**. |
 | Blank or pink textures | Wait for first-time import to finish, then close and reopen the project. |
-| Very slow on a laptop | Use Graphics → Quality Preset → **Low**. |
+| Very slow on a laptop | Use Graphics → Quality Preset → **Low** (1280×720, music-lite, LOD sprites). |
+| Export a Linux binary | Project → Export → **Linux Desktop x86_64** (needs 4.6 export templates). Output: `build/linux/`. Notes in [export/README.txt](export/README.txt). |
 | Empty seed inventory in an exported `.exe` | Prefer running from the Godot editor with this repo, or download a fresh release build that includes packed `data/*.csv` files. |
 | Wrong Godot version warning | Install [Godot 4.6 Stable](https://godotengine.org/download) and open the project with that editor. |
 
@@ -103,6 +108,7 @@ If you are changing code or design (not just playing):
 - **[Architecture](docs/ARCHITECTURE.txt)** — Scene flow and persistence boundaries
 - **[Open Core](obsidian/10_Open_Core_Architecture.md)** — Public vs premium content rules
 - **[Recent engineering notes](docs/GEMINI_RECENT_CHANGES.txt)** — LOD, graphics presets, export notes
+- **[Linux / Iris Xe optimisation](docs/LINUX_LAPTOP_OPTIMISATION.txt)** — 8GB laptop defaults, how to test, log lines
 
 ---
 

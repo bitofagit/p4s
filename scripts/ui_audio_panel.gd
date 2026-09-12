@@ -101,6 +101,16 @@ func _ready() -> void:
 	_skip_row.add_child(_skip_btn)
 	radio_box.add_child(_skip_row)
 
+	var lite_hint := Label.new()
+	lite_hint.text = (
+		"Low graphics uses music-lite (Idle / Planning / Dash only, no extra drum playlist). "
+		+ "Muted is the fully silent path."
+	)
+	lite_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lite_hint.add_theme_font_size_override("font_size", 12)
+	lite_hint.add_theme_color_override("font_color", Color(0.65, 0.75, 0.65))
+	radio_box.add_child(lite_hint)
+
 	var radio_sep := HSeparator.new()
 	add_child(radio_sep)
 

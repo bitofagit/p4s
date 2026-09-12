@@ -1,8 +1,9 @@
 extends Node2D
 class_name FloraLodVector
 
-## Far-zoom flora stand-in: flat vector shapes (cheaper than far LOD atlas tiles).
-## Enabled via MetaManager.flora_vector_far_zoom when camera tier is "far".
+## Optional far-zoom flora stand-in: flat vector shapes (cheaper than far LOD atlas tiles).
+## Off by default on Low/Medium/High — those presets keep baked LOD sprites so plants stay identifiable.
+## Enable only via the Custom "Vector Shapes (Far Zoom)" toggle.
 
 const LAYER_SHAPES := {
 	"canopy": {"radius": 38.0, "height": 72.0, "width": 56.0, "kind": "ellipse"},

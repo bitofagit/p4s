@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Permaculture 4 Squares
+Comment=Open-core permaculture farm simulator
+Exec=p4s
+Icon=p4s
+Terminal=false
+Categories=Game;Simulation;
+StartupWMClass=P4S opencore

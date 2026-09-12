@@ -49,7 +49,8 @@ var pool_size: int = 8
 var audio_players: Array[AudioStreamPlayer] = []
 
 # Generative daytime chimes (pentatonic SFX pool)
-var base_sample: AudioStream = preload("res://assets/base/audio/sfx/chimes/glock-c1.wav")
+var base_sample: AudioStream = preload("res://assets/base/audio/sfx/chimes/glock-c1.ogg")
+var _idle_playlist_expanded := false
 
 
 func _ready() -> void:
@@ -64,53 +65,7 @@ func _ready() -> void:
 		music_player.stream = interactive_music
 	add_child(music_player)
 
-	# --- SAFE DYNAMIC PLAYLIST & SYNC ---
-	if interactive_music:
-		var dynamic_playlist = AudioStreamPlaylist.new()
-		dynamic_playlist.shuffle = true
-
-		var dir = DirAccess.open("res://assets/base/audio/beats")
-		var collected: Array[AudioStream] = []
-		if dir:
-			dir.list_dir_begin()
-			var file_name = dir.get_next()
-			while file_name != "":
-				if not dir.current_is_dir():
-					var clean_name = file_name.replace(".import", "")
-					if clean_name.ends_with(".wav") or clean_name.ends_with(".ogg"):
-						var stream_loaded = load("res://assets/base/audio/beats/" + clean_name) as AudioStream
-						if stream_loaded and stream_loaded not in collected:
-							stream_loaded = _normalize_beat_stream(stream_loaded)
-							stream_loaded.set("bpm", 75.0)
-							stream_loaded.set("beat_count", 16)
-							# CRITICAL: We do NOT set native loop_mode here.
-							collected.append(stream_loaded)
-				file_name = dir.get_next()
-			dir.list_dir_end()
-
-		if collected.size() > 0:
-			dynamic_playlist.stream_count = collected.size()
-			for idx in range(collected.size()):
-				dynamic_playlist.set_list_stream(idx, collected[idx])
-
-		for i in range(interactive_music.clip_count):
-			var clip_name = interactive_music.get_clip_name(i)
-
-			# Swap the single Idle track for our massive dynamic playlist
-			if clip_name == &"Idle" and dynamic_playlist.stream_count > 0:
-				interactive_music.set_clip_stream(i, dynamic_playlist)
-			else:
-				var stream = interactive_music.get_clip_stream(i)
-				if stream:
-					stream = _normalize_beat_stream(stream)
-					interactive_music.set_clip_stream(i, stream)
-					stream.set("bpm", 75.0)
-					stream.set("beat_count", 16)
-
-			# Force the Interactive Engine to safely loop the clips forever
-			interactive_music.set_clip_auto_advance(i, AudioStreamInteractive.AUTO_ADVANCE_ENABLED)
-			interactive_music.set_clip_auto_advance_next_clip(i, i)
-	# ---------------------------------------------
+	_configure_interactive_clips(not MetaManager.music_lite)
 
 	# Setup our Sound Effect AudioPool
 	for i in range(pool_size):
@@ -132,9 +87,74 @@ func _ready() -> void:
 
 	_scan_radio_folders()
 
-	# Start the music!
+	# Start the music (Low music-lite still plays Idle/Planning/Dash, just not 16 extra drums).
 	if interactive_music:
 		music_player.play()
+
+
+## Low preset: keep the three tres clips only. Medium/High: expand Idle with the drum folder.
+func apply_music_profile() -> void:
+	_configure_interactive_clips(not MetaManager.music_lite)
+
+
+func _configure_interactive_clips(expand_idle_playlist: bool) -> void:
+	if interactive_music == null:
+		return
+
+	for i in range(interactive_music.clip_count):
+		var stream = interactive_music.get_clip_stream(i)
+		if stream:
+			stream = _normalize_beat_stream(stream)
+			interactive_music.set_clip_stream(i, stream)
+			stream.set("bpm", 75.0)
+			stream.set("beat_count", 16)
+		interactive_music.set_clip_auto_advance(i, AudioStreamInteractive.AUTO_ADVANCE_ENABLED)
+		interactive_music.set_clip_auto_advance_next_clip(i, i)
+
+	if expand_idle_playlist:
+		_ensure_idle_drum_playlist()
+
+
+func _ensure_idle_drum_playlist() -> void:
+	if _idle_playlist_expanded or interactive_music == null:
+		return
+	var dynamic_playlist = AudioStreamPlaylist.new()
+	dynamic_playlist.shuffle = true
+	var collected: Array[AudioStream] = []
+	var dir = DirAccess.open("res://assets/base/audio/beats")
+	if dir:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if not dir.current_is_dir():
+				var clean_name = file_name.replace(".import", "")
+				var lower := clean_name.to_lower()
+				if lower.ends_with(".ogg") or lower.ends_with(".wav"):
+					# Skip the named clips already wired in farm_music.tres.
+					if clean_name.begins_with("idle.") or clean_name.begins_with("planning.") \
+						or clean_name.begins_with("dash."):
+						file_name = dir.get_next()
+						continue
+					var stream_loaded = load("res://assets/base/audio/beats/" + clean_name) as AudioStream
+					if stream_loaded and stream_loaded not in collected:
+						stream_loaded = _normalize_beat_stream(stream_loaded)
+						stream_loaded.set("bpm", 75.0)
+						stream_loaded.set("beat_count", 16)
+						collected.append(stream_loaded)
+			file_name = dir.get_next()
+		dir.list_dir_end()
+
+	if collected.is_empty():
+		return
+	dynamic_playlist.stream_count = collected.size()
+	for idx in range(collected.size()):
+		dynamic_playlist.set_list_stream(idx, collected[idx])
+	for i in range(interactive_music.clip_count):
+		if interactive_music.get_clip_name(i) == &"Idle":
+			interactive_music.set_clip_stream(i, dynamic_playlist)
+			break
+	_idle_playlist_expanded = true
+	print("[P4S] radio: expanded Idle playlist with %d drum clips" % collected.size())
 
 
 func _scan_radio_folders() -> void:
@@ -365,14 +385,15 @@ func set_music_state(clip_name: String) -> void:
 
 # We process this purely to extract Godot's native timing for our Daytime Echoes
 func _process(_delta: float) -> void:
-	if music_player.playing:
-		var playback = music_player.get_stream_playback()
-		if playback and playback.has_method("get_current_beat"):
-			var current_engine_beat = int(playback.get_current_beat())
-			if current_engine_beat != _global_beat_tracker:
-				_global_beat_tracker = current_engine_beat
-				current_beat = _global_beat_tracker
-				native_beat_hit.emit(_global_beat_tracker)
+	if audio_mode == "mute" or music_player == null or not music_player.playing:
+		return
+	var playback = music_player.get_stream_playback()
+	if playback and playback.has_method("get_current_beat"):
+		var current_engine_beat = int(playback.get_current_beat())
+		if current_engine_beat != _global_beat_tracker:
+			_global_beat_tracker = current_engine_beat
+			current_beat = _global_beat_tracker
+			native_beat_hit.emit(_global_beat_tracker)
 
 
 func get_beat_duration() -> float:

@@ -9,16 +9,18 @@ extends Node
 const SETTINGS_PATH := "user://settings.json"
 
 ## Matches `project.godot` window overrides and graphics panel options (windowed sizes only).
-## 16:10 defaults tuned for 16" MacBook Pro (Retina); FALLBACK fits macOS "Default" scaled pixels.
-const DISPLAY_SETTINGS_VERSION := 1
-const DEFAULT_RESOLUTION := Vector2i(1920, 1200)
-const FALLBACK_RESOLUTION := Vector2i(1728, 1117)
+## First-run / Low default is 1280×720 windowed (Iris Xe / 8GB). High can still go native fullscreen.
+const DISPLAY_SETTINGS_VERSION := 2
+const DEFAULT_RESOLUTION := Vector2i(1280, 720)
+const FALLBACK_RESOLUTION := Vector2i(1280, 720)
+const MEDIUM_RESOLUTION := Vector2i(1280, 720)
+const HIGH_WINDOWED_RESOLUTION := Vector2i(1920, 1080)
 const RESOLUTION_PRESETS: Array[Vector2i] = [
 	Vector2i(1280, 720),
 	Vector2i(1600, 900),
-	FALLBACK_RESOLUTION,
+	Vector2i(1728, 1117),
 	Vector2i(1920, 1080),
-	DEFAULT_RESOLUTION,
+	Vector2i(1920, 1200),
 	Vector2i(2560, 1600),
 	Vector2i(2560, 1440),
 	Vector2i(3840, 2160),
@@ -105,8 +107,31 @@ func get_default_resolution() -> Vector2i:
 
 
 func get_default_window_mode() -> DisplayServer.WindowMode:
-	# Borderless fullscreen fills the display; canvas_items stretch scales the viewport.
-	return DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	# Windowed 1280×720 is the 8GB / iGPU boot default. High preset can switch to fullscreen.
+	return DisplayServer.WINDOW_MODE_WINDOWED
+
+
+## Apply the resolution / mode that belongs with a Low / Medium / High quality pick.
+func apply_preset_display_defaults(preset_id: int, persist: bool = true) -> void:
+	_ensure_display_defaults()
+	match preset_id:
+		MetaManager.PRESET_LOW:
+			display_settings["window_mode"] = DisplayServer.WINDOW_MODE_WINDOWED
+			display_settings["width"] = DEFAULT_RESOLUTION.x
+			display_settings["height"] = DEFAULT_RESOLUTION.y
+		MetaManager.PRESET_MEDIUM:
+			display_settings["window_mode"] = DisplayServer.WINDOW_MODE_WINDOWED
+			display_settings["width"] = MEDIUM_RESOLUTION.x
+			display_settings["height"] = MEDIUM_RESOLUTION.y
+		MetaManager.PRESET_HIGH:
+			display_settings["window_mode"] = DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+			display_settings["width"] = HIGH_WINDOWED_RESOLUTION.x
+			display_settings["height"] = HIGH_WINDOWED_RESOLUTION.y
+		_:
+			return
+	apply_display_settings()
+	if persist:
+		save_settings()
 
 
 func clear_window_size_overrides() -> void:
@@ -221,10 +246,23 @@ func _migrate_display_settings() -> void:
 	var ver: int = int(display_settings.get("_version", 0))
 	if ver >= DISPLAY_SETTINGS_VERSION:
 		return
-	display_settings["window_mode"] = get_default_window_mode()
-	display_settings["width"] = DEFAULT_RESOLUTION.x
-	display_settings["height"] = DEFAULT_RESOLUTION.y
-	display_settings["ui_scale"] = 1.0
+	# v2: only rewrite the old Mac exclusive-fullscreen first-run defaults.
+	# Custom resolutions the player picked stay put.
+	var width := int(display_settings.get("width", DEFAULT_RESOLUTION.x))
+	var height := int(display_settings.get("height", DEFAULT_RESOLUTION.y))
+	var mode := int(display_settings.get("window_mode", DisplayServer.WINDOW_MODE_WINDOWED))
+	var looks_like_old_mac_default := (
+		mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+		and (
+			(width == 1920 and height == 1200)
+			or (width == 2560 and height == 1600)
+			or (width == 1728 and height == 1117)
+		)
+	)
+	if ver < 2 and looks_like_old_mac_default:
+		display_settings["window_mode"] = get_default_window_mode()
+		display_settings["width"] = DEFAULT_RESOLUTION.x
+		display_settings["height"] = DEFAULT_RESOLUTION.y
 	display_settings["_version"] = DISPLAY_SETTINGS_VERSION
 	save_settings()
 

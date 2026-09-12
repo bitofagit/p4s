@@ -14,26 +14,29 @@ const PRESET_CUSTOM := 3
 const PRESET_LABELS: Array[String] = ["Low", "Medium", "High", "Custom"]
 
 ## Macro rendering matrix — applied when preset slider is 0, 1, or 2.
+## Low keeps real LOD plant atlases (no vector/rect stand-ins) so species stay readable.
 const PRESET_DEFINITIONS: Array[Dictionary] = [
 	{
 		"render_groundcover": false,
-		"render_understory": false,
+		"render_understory": true,
 		"dynamic_zoom_culling": true,
 		"low_end_gpu": true,
 		"weather_particles": 80,
 		"advanced_overlays": false,
 		"data_lens_fx": false,
-		"flora_vector_far_zoom": true,
+		"flora_vector_far_zoom": false,
+		"music_lite": true,
 	},
 	{
 		"render_groundcover": false,
 		"render_understory": true,
 		"dynamic_zoom_culling": true,
 		"low_end_gpu": false,
-		"weather_particles": 250,
+		"weather_particles": 100,
 		"advanced_overlays": false,
-		"data_lens_fx": true,
+		"data_lens_fx": false,
 		"flora_vector_far_zoom": false,
+		"music_lite": true,
 	},
 	{
 		"render_groundcover": true,
@@ -44,6 +47,7 @@ const PRESET_DEFINITIONS: Array[Dictionary] = [
 		"advanced_overlays": true,
 		"data_lens_fx": true,
 		"flora_vector_far_zoom": false,
+		"music_lite": false,
 	},
 ]
 
@@ -57,7 +61,7 @@ var magnetic_docking: bool = true
 # --- Graphics settings (safe-boot LOW defaults until shadow_logic_meta.json exists) ---
 var graphics_preset: int = PRESET_LOW
 var render_groundcover: bool = false
-var render_understory: bool = false
+var render_understory: bool = true
 var dynamic_zoom_culling: bool = true
 var low_end_gpu: bool = true
 ## Rain CPUParticles2D emission cap (clamped live when weather is active).
@@ -67,14 +71,18 @@ var advanced_overlays: bool = false
 ## Trigonometric nutrient ribbons / rim waves in data lenses (flat blocks when off).
 var data_lens_fx: bool = false
 ## Replace far LOD atlas sprites with basic vector shapes at extreme zoom-out.
-var flora_vector_far_zoom: bool = true
+## Off on Low/Medium/High: far LOD uses the baked sprite atlas, not coloured blobs.
+var flora_vector_far_zoom: bool = false
+## Skip the 16-track drum playlist; keep Idle / Planning / Dash only.
+var music_lite: bool = true
 
 var _applying_preset := false
+var _first_boot_no_meta := false
 
 
 func _ready() -> void:
 	load_meta()
-	call_deferred("_detect_low_end_gpu")
+	call_deferred("_boot_graphics_profile")
 
 
 func preset_label(preset_id: int = -1) -> String:
@@ -92,6 +100,7 @@ func apply_graphics_preset(preset_id: int, persist: bool = true) -> void:
 	_apply_definition_fields(PRESET_DEFINITIONS[preset_id])
 	_detect_low_end_gpu()
 	_applying_preset = false
+	_sync_radio_music_profile()
 	if persist:
 		save_meta()
 	graphics_settings_changed.emit()
@@ -106,6 +115,7 @@ func _apply_definition_fields(def: Dictionary) -> void:
 	advanced_overlays = bool(def.get("advanced_overlays", false))
 	data_lens_fx = bool(def.get("data_lens_fx", false))
 	flora_vector_far_zoom = bool(def.get("flora_vector_far_zoom", false))
+	music_lite = bool(def.get("music_lite", false))
 
 
 ## Call when the player edits an individual graphics toggle while on a fixed tier.
@@ -115,6 +125,74 @@ func notify_graphics_customised() -> void:
 	graphics_preset = PRESET_CUSTOM
 	save_meta()
 	graphics_settings_changed.emit()
+
+
+## Deferred: GPU context is ready. First run picks Medium for Iris Xe / 8GB
+## laptops (readable flora, no potato streaming) and keeps Low for VMware / HD 520.
+func _boot_graphics_profile() -> void:
+	_detect_low_end_gpu()
+	if _first_boot_no_meta:
+		var recommended := recommend_first_run_preset()
+		_first_boot_no_meta = false
+		apply_graphics_preset(recommended, true)
+		print(
+			"[P4S] first-run preset=%s low_end_gpu=%s (gpu=%s ram=%.0fMB)"
+			% [
+				preset_label(recommended),
+				str(low_end_gpu),
+				RenderingServer.get_video_adapter_name(),
+				float(physical_ram_mb()),
+			]
+		)
+		return
+	_sync_radio_music_profile()
+
+
+func recommend_first_run_preset() -> int:
+	if OS.has_feature("p4s_low_end"):
+		return PRESET_LOW
+	var gpu := RenderingServer.get_video_adapter_name().to_lower()
+	var vendor := RenderingServer.get_video_adapter_vendor().to_lower()
+	var adapter_type := RenderingServer.get_video_adapter_type()
+	if _is_legacy_or_virtual_gpu(gpu, vendor, adapter_type):
+		return PRESET_LOW
+	if _is_capable_modern_gpu(gpu, vendor):
+		# Iris Xe / 8GB shared RAM: Medium flora (LOD atlases) + restrained FX.
+		# High is opt-in for discrete GPUs with more than 8GB.
+		if _is_discrete_gpu(adapter_type) and physical_ram_mb() > 8704:
+			return PRESET_HIGH
+		return PRESET_MEDIUM
+	if physical_ram_mb() > 12000 and _is_discrete_gpu(adapter_type):
+		return PRESET_HIGH
+	return PRESET_LOW
+
+
+func physical_ram_mb() -> int:
+	var info: Dictionary = OS.get_memory_info()
+	if info.is_empty():
+		return 0
+	return int(float(info.get("physical", 0)) / 1048576.0)
+
+
+func is_memory_constrained() -> bool:
+	var mb := physical_ram_mb()
+	return mb > 0 and mb <= 8704
+
+
+func _is_discrete_gpu(adapter_type: int) -> bool:
+	return adapter_type == RenderingDevice.DEVICE_TYPE_DISCRETE_GPU
+
+
+func _sync_radio_music_profile() -> void:
+	var radio := Engine.get_main_loop()
+	if radio == null:
+		return
+	var tree := radio as SceneTree
+	if tree == null:
+		return
+	var node := tree.root.get_node_or_null("RadioManager")
+	if node != null and node.has_method("apply_music_profile"):
+		node.call("apply_music_profile")
 
 
 func _detect_low_end_gpu() -> void:
@@ -130,6 +208,12 @@ func _detect_low_end_gpu() -> void:
 	if gpu.is_empty():
 		return
 
+	# Iris Xe / Arc / "Xe Graphics" are capable 2D iGPUs — never treat as SVGA.
+	if _is_iris_xe_class(gpu):
+		low_end_gpu = false
+		print("[P4S] low_end_gpu=OFF (Iris Xe class: %s)" % RenderingServer.get_video_adapter_name())
+		return
+
 	if _is_legacy_or_virtual_gpu(gpu, vendor, adapter_type):
 		low_end_gpu = true
 		print("[P4S] low_end_gpu=ON (legacy/virtual: %s)" % RenderingServer.get_video_adapter_name())
@@ -138,6 +222,18 @@ func _detect_low_end_gpu() -> void:
 	if _is_capable_modern_gpu(gpu, vendor):
 		low_end_gpu = false
 		return
+
+
+func _is_iris_xe_class(gpu: String) -> bool:
+	return (
+		"iris" in gpu
+		or "xe graphics" in gpu
+		or "intel(r) xe" in gpu
+		or "intel xe" in gpu
+		or "uhd graphics for" in gpu and "11th" in gpu
+		or "7505" in gpu
+		or "tiger lake" in gpu
+	)
 
 
 func _is_legacy_or_virtual_gpu(gpu: String, vendor: String, adapter_type: int) -> bool:
@@ -166,7 +262,7 @@ func _is_legacy_or_virtual_gpu(gpu: String, vendor: String, adapter_type: int) -
 
 
 func _is_capable_modern_gpu(gpu: String, vendor: String) -> bool:
-	if "iris" in gpu or "xe graphics" in gpu or "intel(r) xe" in gpu or " arc " in gpu:
+	if _is_iris_xe_class(gpu) or " arc " in gpu or "intel(r) arc" in gpu:
 		return true
 	if "apple" in gpu or "apple" in vendor or "m1" in gpu or "m2" in gpu or "m3" in gpu or "m4" in gpu:
 		return true
@@ -227,6 +323,7 @@ var upgrade_db = {
 
 func load_meta() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
+		_first_boot_no_meta = true
 		apply_graphics_preset(PRESET_LOW, false)
 		return
 	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
@@ -247,7 +344,8 @@ func load_meta() -> void:
 			weather_particles = clampi(int(data.get("weather_particles", 80)), 20, 800)
 			advanced_overlays = bool(data.get("advanced_overlays", false))
 			data_lens_fx = bool(data.get("data_lens_fx", false))
-			flora_vector_far_zoom = bool(data.get("flora_vector_far_zoom", true))
+			flora_vector_far_zoom = bool(data.get("flora_vector_far_zoom", false))
+			music_lite = bool(data.get("music_lite", true))
 		else:
 			apply_graphics_preset(graphics_preset, false)
 
@@ -266,6 +364,7 @@ func save_meta() -> void:
 		"advanced_overlays": advanced_overlays,
 		"data_lens_fx": data_lens_fx,
 		"flora_vector_far_zoom": flora_vector_far_zoom,
+		"music_lite": music_lite,
 	}
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	file.store_string(JSON.stringify(data))

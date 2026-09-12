@@ -17,7 +17,7 @@ const TIERS: Array[Dictionary] = [
 		"id": "mid",
 		"filename": "flora_atlas_lod_mid.png",
 		"inner_scale": 0.5,
-		"full_zoom_min": 0.20,
+		"full_zoom_min": 0.18,
 	},
 	{
 		"id": "far",
@@ -79,7 +79,7 @@ static func bake() -> Dictionary:
 			out_path, cols, rows, inner_sz,
 		])
 
-	var full_zoom := 0.38
+	var full_zoom := 0.32
 	var manifest := {
 		"version": 1,
 		"source_atlas": FULL_ATLAS_PATH,

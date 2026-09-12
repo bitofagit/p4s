@@ -126,8 +126,9 @@ func _ready() -> void:
 
 	var lbl_preset_hint = Label.new()
 	lbl_preset_hint.text = (
-		"Low is the safe boot default for weak laptops. Medium suits Iris Xe / mid-tier iGPUs. "
-		+ "Manual tweaks switch to Custom."
+		"Low: 1280×720, understory sprites + LOD atlases, music-lite. "
+		+ "Medium (Iris Xe / 8GB first-run): 1280×720, same readable plants, fewer particles. "
+		+ "High: fullscreen + groundcover. Manual tweaks switch to Custom."
 	)
 	lbl_preset_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl_preset_hint.add_theme_font_size_override("font_size", 12)
@@ -205,7 +206,8 @@ func _ready() -> void:
 	var lbl_perf_hint = Label.new()
 	lbl_perf_hint.text = (
 		"Groundcover is the heaviest flora layer. Advanced overlays include swale shimmers and "
-		+ "structure washes. Vector shapes replace far LOD sprites when zoomed out."
+		+ "structure washes. Vector shapes are an optional far-zoom stand-in — leave off to keep "
+		+ "real plant sprites at every LOD tier."
 	)
 	lbl_perf_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl_perf_hint.add_theme_font_size_override("font_size", 12)
@@ -248,8 +250,10 @@ func _on_preset_slider_changed(value: float) -> void:
 	if preset_id == MetaManager.PRESET_CUSTOM:
 		return
 	MetaManager.apply_graphics_preset(preset_id)
+	SaveManager.apply_preset_display_defaults(preset_id)
 	_sync_perf_controls_from_meta()
 	_apply_graphics_runtime()
+	sync_controls_from_system()
 
 
 func _on_weather_particles_changed(value: float) -> void:
