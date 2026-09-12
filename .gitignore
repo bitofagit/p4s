@@ -4,8 +4,8 @@
 .godot/
 *.translation
 *.gdignore
-export_presets.cfg
 /android/
+/build/
 
 # ==========================================
 # 2. OPEN-CORE SHIELDS (PREMIUM IP)

@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="P4S opencore"
-config/version="0.9.5.27"
+config/version="0.9.5.28"
 run/main_scene="uid://b8mainmenu01"
 config/features=PackedStringArray("4.6", "Mobile")
 run/max_fps=60
@@ -31,13 +31,20 @@ GodotDocsLog="*res://scripts/godot_docs_log.gd"
 
 [debug]
 
-settings/gdscript/always_track_call_stacks=true
+; Off by default: tracking every call stack burns RAM/CPU in the 8GB editor.
+; Re-enable in the debugger when you need a stack on a specific crash.
+settings/gdscript/always_track_call_stacks=false
 
 [display]
 
+; Design size stays 2560×1600 so HUD layout is unchanged; the first-run
+; window is 1280×720 (canvas_items stretch). Exclusive fullscreen at a
+; native 2560×1600 panel is the fill-rate killer on Iris Xe / 8GB.
 window/size/viewport_width=2560
 window/size/viewport_height=1600
-window/size/mode=4
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/size/mode=0
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
@@ -47,5 +54,9 @@ window/stretch/aspect="expand"
 
 [rendering]
 
+; 2D TileMap farm: Godot 4.6 "mobile" (Vulkan) batches canvas items well on
+; Iris Xe / Mesa ANV. gl_compatibility is the fallback if Vulkan fails
+; (old Intel HD, some VMs) — not the laptop default.
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
+rendering_device/fallback_to_opengl3=true

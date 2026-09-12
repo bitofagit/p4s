@@ -82,8 +82,15 @@ func _ready() -> void:
 func _apply_low_end_camera_limits() -> void:
 	MetaManager.ensure_low_end_detected()
 	if MetaManager.low_end_gpu:
-		# Don't let the player zoom out to the whole farm on weak / virtual GPUs.
-		min_zoom = 0.4
+		# Potato / VMware: stay zoomed in so terrain streaming stays cheap.
+		min_zoom = 0.35
+		if target_zoom < min_zoom:
+			target_zoom = min_zoom
+			zoom = Vector2(min_zoom, min_zoom)
+	elif MetaManager.graphics_preset == MetaManager.PRESET_LOW:
+		# Low on Iris Xe: allow a farm overview, but not extreme zoom-out.
+		# 0.18 sits on the mid/far LOD atlas boundary (sprites, not vectors).
+		min_zoom = 0.18
 		if target_zoom < min_zoom:
 			target_zoom = min_zoom
 			zoom = Vector2(min_zoom, min_zoom)

@@ -1,8 +1,8 @@
 [gd_resource type="AudioStreamInteractive" format=3 uid="uid://dyr43ccm0wdsm"]
 
-[ext_resource type="AudioStream" uid="uid://4ybm0h4d0120" path="res://assets/base/audio/beats/idle.wav" id="1_r02fp"]
-[ext_resource type="AudioStream" uid="uid://dd54we1e4u8hm" path="res://assets/base/audio/beats/planning.wav" id="2_4l3bp"]
-[ext_resource type="AudioStream" uid="uid://ce1vj3v20w87t" path="res://assets/base/audio/beats/dash.wav" id="3_834e4"]
+[ext_resource type="AudioStream" uid="uid://dmx2gdlxas70e" path="res://assets/base/audio/beats/idle.ogg" id="1_r02fp"]
+[ext_resource type="AudioStream" uid="uid://4ctmpvw1qbdi" path="res://assets/base/audio/beats/planning.ogg" id="2_4l3bp"]
+[ext_resource type="AudioStream" uid="uid://cwhoo7bf5qygp" path="res://assets/base/audio/beats/dash.ogg" id="3_834e4"]
 
 [resource]
 clip_count = 3

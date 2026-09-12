@@ -108,7 +108,7 @@ func _print_startup_details() -> void:
 			type_label,
 			RenderingServer.get_video_adapter_api_version(),
 		],
-		"[P4S sysinfo] window=%s screen=%s @ %.0fHz vsync=%d max_fps=%d scale=%.2f low_end=%s" % [
+		"[P4S sysinfo] window=%s screen=%s @ %.0fHz vsync=%d max_fps=%d scale=%.2f low_end=%s preset=%s music_lite=%s" % [
 			str(DisplayServer.window_get_size()),
 			str(DisplayServer.screen_get_size(screen)),
 			DisplayServer.screen_get_refresh_rate(screen),
@@ -116,6 +116,8 @@ func _print_startup_details() -> void:
 			Engine.max_fps,
 			scale_factor,
 			str(MetaManager.low_end_gpu),
+			MetaManager.preset_label(),
+			str(MetaManager.music_lite),
 		],
 		"[P4S sysinfo] audio mix_rate=%.0fHz latency=%.1fms driver_setting=%s" % [
 			AudioServer.get_mix_rate(),

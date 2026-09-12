@@ -92,8 +92,8 @@ static func flora_lod_meta() -> Dictionary:
 static func flora_full_zoom_min() -> float:
 	_ensure_lod_map()
 	if _lod_map.is_empty():
-		return 0.38
-	return float(_lod_map.get("full_zoom_min", 0.38))
+		return 0.28
+	return float(_lod_map.get("full_zoom_min", 0.28))
 
 
 ## Returns "" (use full atlas), "mid", or "far" for the active LOD tile set.

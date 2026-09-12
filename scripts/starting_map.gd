@@ -56,6 +56,9 @@ var _hit_stop_active: bool = false
 var _stress_anim_budget: int = 0
 var home_pos: Vector2i
 var is_sleeping: bool = false
+## Time-slice overnight full-grid work so dual-core / 8GB machines keep a live frame.
+const OVERNIGHT_SLICE_BUDGET_USEC := 8000
+var _overnight_slice_usec: int = 0
 var hud_instance: Control
 ## Wired after HUD instantiate (scene paths).
 var right_info_panel: PanelContainer
@@ -168,7 +171,7 @@ var tooltip_label: RichTextLabel
 
 var audio_pool: Array[AudioStreamPlayer] = []
 # Generative daytime echoes (same Glockenspiel root as RadioManager.base_sample)
-var base_chime: AudioStream = preload("res://assets/base/audio/sfx/chimes/glock-c1.wav")
+var base_chime: AudioStream = preload("res://assets/base/audio/sfx/chimes/glock-c1.ogg")
 
 var seasonal_scales = {
 	"Spring": [2, 4, 6, 9, 11], # D Major Pentatonic (Bright, awakening)
@@ -872,8 +875,7 @@ func _clear_cell_pollination(cell: Dictionary) -> void:
 
 func _apply_overnight_bee_pollination() -> void:
 	for x in range(_map_w()):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 			if _cell_fixture_id(cell) != "beehive":
@@ -1539,12 +1541,13 @@ func _snap_camera_to_farmhouse() -> void:
 	var target := map_to_local(farmhouse_pos)
 	main_camera.global_position = target
 	main_camera.desired_pos = target
-	# Low-end: start more zoomed-in so fewer terrain tiles are in view.
+	# Potato / VMware: start more zoomed-in so fewer terrain tiles are in view.
+	# Iris Xe Low uses the same 0.25 farm view as Medium (mid LOD sprites).
 	if MetaManager.low_end_gpu:
 		main_camera.zoom = Vector2(0.6, 0.6)
 		main_camera.target_zoom = 0.6
 		if main_camera.get("min_zoom") != null:
-			main_camera.min_zoom = 0.4
+			main_camera.min_zoom = 0.35
 	elif FarmDataManager.map_width >= 100:
 		main_camera.zoom = Vector2(0.25, 0.25)
 		main_camera.target_zoom = 0.25
@@ -5257,6 +5260,19 @@ func _generate_triage_data() -> void:
 						break
 
 
+func _overnight_begin_slice() -> void:
+	_overnight_slice_usec = Time.get_ticks_usec()
+
+
+func _overnight_maybe_yield() -> void:
+	if Time.get_ticks_usec() - _overnight_slice_usec < OVERNIGHT_SLICE_BUDGET_USEC:
+		return
+	var tree := get_tree()
+	if tree != null:
+		await tree.process_frame
+	_overnight_slice_usec = Time.get_ticks_usec()
+
+
 func trigger_sleep() -> void:
 	if is_sleeping:
 		return
@@ -5576,8 +5592,13 @@ func _start_turn_transfer_waves() -> void:
 
 
 func _process_turn_logic() -> void:
+	var overnight_t0 := Time.get_ticks_msec()
+	_overnight_begin_slice()
 	_turn_nutrient_flows.clear()
-	_last_transfer_snapshot = _snapshot_transfer_stats()
+	if MetaManager.data_lens_fx:
+		_last_transfer_snapshot = _snapshot_transfer_stats()
+	else:
+		_last_transfer_snapshot.clear()
 
 	overnight_events.clear()
 	_process_oakhaven_npc_turn()
@@ -5629,8 +5650,7 @@ func _process_turn_logic() -> void:
 	# --- V3 DAILY WEATHER → moisture (0–10, swales 0–SWALE_MOISTURE_MAX); infra skip; polytunnel mild −0.2 ---
 	const SKIP_WEATHER_LANDS: Array[String] = ["road", "house", "house_door", "bridge", "river", "stream"]
 	for x in range(_map_w()):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 			var land_k := str(cell.get("land", ""))
@@ -5723,8 +5743,7 @@ func _process_turn_logic() -> void:
 
 	const MOISTURE_CAP := 10.0
 	for x in range(_map_w()):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 
@@ -5788,6 +5807,7 @@ func _process_turn_logic() -> void:
 			cell["moisture"] = clampf(float(cell.get("moisture", 5.0)), 0.0, post_cap)
 
 	for rx in range(_map_w()):
+		await _overnight_maybe_yield()
 		for ry in range(_map_w()):
 			if str(FarmDataManager.grid_data[rx][ry].get("land", "")) == "river":
 				var rc: Dictionary = FarmDataManager.grid_data[rx][ry]
@@ -5803,6 +5823,7 @@ func _process_turn_logic() -> void:
 		gen_weather = forecast[0]
 
 	for x in range(_map_w()):
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 			var st_id := str(cell.get("structure", ""))
@@ -5992,8 +6013,7 @@ func _process_turn_logic() -> void:
 
 	# Process Animal Systems (Pig Tractors)
 	for x in range(_map_w()):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell: Dictionary = FarmDataManager.grid_data[x][y]
 			if str(cell.get("structure", "")) == "pig_house":
@@ -6118,6 +6138,7 @@ func _process_turn_logic() -> void:
 
 	# 1. Gather all duck infrastructure
 	for x in range(_map_w()):
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell = FarmDataManager.grid_data[x][y]
 			if str(cell.get("structure", "")) == "duck_house":
@@ -6153,6 +6174,7 @@ func _process_turn_logic() -> void:
 
 	# --- PIG ECOLOGY (The Rototiller) ---
 	for x in range(_map_w()):
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			if str(FarmDataManager.grid_data[x][y].get("structure", "")) == "pig_house":
 				# Pigs aggressively root and till in a 3-tile radius
@@ -6184,8 +6206,7 @@ func _process_turn_logic() -> void:
 	# --- HIMALAYAN BALSAM ECOLOGY (The Virus) ---
 	var new_balsam: Array[Vector2i] = []
 	for x in range(_map_w()):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell = FarmDataManager.grid_data[x][y]
 			if str(cell.get("ground", "")) == "himalayan_balsam":
@@ -6235,8 +6256,7 @@ func _process_turn_logic() -> void:
 	var warning_count = 0
 	# Only scan the player's actual farm boundaries
 	for x in range(FarmDataManager.player_bounds_left + 1, FarmDataManager.player_bounds_right):
-		if x % 16 == 0:
-			await get_tree().process_frame
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			var cell = FarmDataManager.grid_data[x][y]
 			for layer in ["canopy", "understory", "ground"]:
@@ -6265,7 +6285,7 @@ func _process_turn_logic() -> void:
 							)
 							warning_count += 1
 
-	_generate_daily_narrative()
+	await _generate_daily_narrative()
 
 	# --- LIVE UI REFRESH ---
 	if is_instance_valid(hud_instance):
@@ -6289,10 +6309,20 @@ func _process_turn_logic() -> void:
 		main_camera.play_event_queue(overnight_events)
 
 	_start_turn_transfer_waves()
+	print(
+		"[P4S perf] overnight_ms=%d cells=%d preset=%s low_end=%s"
+		% [
+			Time.get_ticks_msec() - overnight_t0,
+			_map_w() * _map_h(),
+			MetaManager.preset_label(),
+			str(MetaManager.low_end_gpu),
+		]
+	)
 
 func _generate_daily_narrative() -> void:
 	var boxes_owned = 0
 	for x in range(_map_w()):
+		await _overnight_maybe_yield()
 		for y in range(_map_h()):
 			if str(FarmDataManager.grid_data[x][y].get("structure", "")) == "honesty_box":
 				boxes_owned += 1
@@ -6840,10 +6870,10 @@ func play_synesthesia_chime(act_type: String = "", is_echo: bool = false, forced
 
 
 func _play_balsam_pop() -> void:
-	# Prefer project pop; fallback if missing (drop-in pop.wav under environment/ anytime).
+	# Prefer project pop; fallback if missing (drop-in pop.ogg under environment/ anytime).
 	var pop_paths: Array[String] = [
-		"res://assets/base/audio/sfx/environment/pop.wav",
-		"res://assets/base/audio/sfx/chimes/chimehit.wav",
+		"res://assets/base/audio/sfx/environment/pop.ogg",
+		"res://assets/base/audio/sfx/chimes/chimehit.ogg",
 	]
 	var pop_stream: AudioStream
 	for path in pop_paths:
@@ -6852,7 +6882,7 @@ func _play_balsam_pop() -> void:
 			pop_stream = s
 			break
 	if not pop_stream:
-		push_warning("Balsam pop: add res://assets/base/audio/sfx/environment/pop.wav (or fix audio import paths).")
+		push_warning("Balsam pop: add res://assets/base/audio/sfx/environment/pop.ogg (or fix audio import paths).")
 		return
 
 	var p = AudioStreamPlayer.new()
